@@ -1,0 +1,278 @@
+/**
+ * @Author wei
+ * @Date 2026-02-07
+ * @Description Content Script，用于提取页面内容和显示浮窗按钮
+ **/
+
+// ==================== 浮窗按钮功能 ====================
+
+// 创建浮窗按钮
+function createFloatButton() {
+  // 检查是否已存在
+  if (document.getElementById('ai-sidebar-float-btn')) {
+    return;
+  }
+
+  // 创建浮窗容器
+  const floatContainer = document.createElement('div');
+  floatContainer.id = 'ai-sidebar-float-btn';
+  floatContainer.className = 'ai-sidebar-float-container';
+
+  // 主按钮
+  const mainBtn = document.createElement('button');
+  mainBtn.className = 'ai-sidebar-float-main';
+  mainBtn.innerHTML = `
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="10"></circle>
+      <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+      <line x1="12" y1="17" x2="12.01" y2="17"></line>
+    </svg>
+  `;
+  mainBtn.title = 'AI 助手';
+
+  // 展开菜单
+  const menu = document.createElement('div');
+  menu.className = 'ai-sidebar-float-menu';
+
+  // 打开侧边栏按钮
+  const openBtn = document.createElement('button');
+  openBtn.className = 'ai-sidebar-float-menu-item';
+  openBtn.innerHTML = `
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+      <line x1="9" y1="3" x2="9" y2="21"></line>
+    </svg>
+    <span class="ai-sidebar-tooltip">打开侧边栏</span>
+  `;
+  openBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    chrome.runtime.sendMessage({ type: 'FLOAT_ACTION', action: 'open_sidebar' });
+    hideMenu();
+  });
+
+  // 总结页面按钮
+  const summarizeBtn = document.createElement('button');
+  summarizeBtn.className = 'ai-sidebar-float-menu-item';
+  summarizeBtn.innerHTML = `
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+    </svg>
+    <span class="ai-sidebar-tooltip">总结页面</span>
+  `;
+  summarizeBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    chrome.runtime.sendMessage({ type: 'FLOAT_ACTION', action: 'summarize' });
+    hideMenu();
+  });
+
+  menu.appendChild(openBtn);
+  menu.appendChild(summarizeBtn);
+
+  floatContainer.appendChild(menu);
+  floatContainer.appendChild(mainBtn);
+
+  document.body.appendChild(floatContainer);
+
+  // 菜单状态
+  let menuVisible = false;
+
+  function showMenu() {
+    menu.classList.add('visible');
+    mainBtn.classList.add('active');
+    menuVisible = true;
+  }
+
+  function hideMenu() {
+    menu.classList.remove('visible');
+    mainBtn.classList.remove('active');
+    menuVisible = false;
+  }
+
+  function toggleMenu() {
+    if (menuVisible) {
+      hideMenu();
+    } else {
+      showMenu();
+    }
+  }
+
+  // 点击主按钮切换菜单
+  mainBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggleMenu();
+  });
+
+  // 点击外部关闭菜单
+  document.addEventListener('click', () => {
+    if (menuVisible) {
+      hideMenu();
+    }
+  });
+
+  // 拖拽功能
+  let isDragging = false;
+  let startX, startY, startLeft, startBottom;
+
+  mainBtn.addEventListener('mousedown', (e) => {
+    // 只响应左键
+    if (e.button !== 0) return;
+
+    isDragging = false;
+    startX = e.clientX;
+    startY = e.clientY;
+
+    const rect = floatContainer.getBoundingClientRect();
+    startLeft = rect.left;
+    startBottom = window.innerHeight - rect.bottom;
+
+    const onMouseMove = (e) => {
+      const deltaX = e.clientX - startX;
+      const deltaY = e.clientY - startY;
+
+      // 如果移动超过 5px，认为是拖拽
+      if (Math.abs(deltaX) > 5 || Math.abs(deltaY) > 5) {
+        isDragging = true;
+
+        let newLeft = startLeft + deltaX;
+        let newBottom = startBottom - deltaY;
+
+        // 边界限制
+        const maxLeft = window.innerWidth - floatContainer.offsetWidth - 10;
+        const maxBottom = window.innerHeight - floatContainer.offsetHeight - 10;
+
+        newLeft = Math.max(10, Math.min(newLeft, maxLeft));
+        newBottom = Math.max(10, Math.min(newBottom, maxBottom));
+
+        floatContainer.style.left = newLeft + 'px';
+        floatContainer.style.right = 'auto';
+        floatContainer.style.bottom = newBottom + 'px';
+      }
+    };
+
+    const onMouseUp = () => {
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+
+      // 如果是拖拽，阻止点击事件
+      if (isDragging) {
+        setTimeout(() => {
+          isDragging = false;
+        }, 0);
+      }
+    };
+
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
+  });
+
+  // 阻止拖拽时的点击
+  mainBtn.addEventListener('click', (e) => {
+    if (isDragging) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
+  }, true);
+}
+
+// 页面加载后创建浮窗
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', createFloatButton);
+} else {
+  createFloatButton();
+}
+
+// ==================== 页面内容提取功能 ====================
+
+// 监听来自 background 或 sidepanel 的消息
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.type === 'EXTRACT_CONTENT') {
+    const content = extractPageContent();
+    sendResponse(content);
+  }
+  return true;
+});
+
+/**
+ * 提取页面的主要文本内容
+ * @returns {Object} 包含标题、URL、内容的对象
+ */
+function extractPageContent() {
+  // 获取页面标题
+  const title = document.title || '';
+
+  // 获取页面 URL
+  const url = window.location.href;
+
+  // 获取页面主要内容
+  let content = '';
+
+  // 尝试获取 article 标签内容
+  const article = document.querySelector('article');
+  if (article) {
+    content = cleanText(article.innerText);
+  } else {
+    // 尝试获取 main 标签内容
+    const main = document.querySelector('main');
+    if (main) {
+      content = cleanText(main.innerText);
+    } else {
+      // 获取 body 内容，排除 script、style、nav、footer 等
+      content = extractBodyContent();
+    }
+  }
+
+  // 获取页面描述
+  const metaDescription = document.querySelector('meta[name="description"]');
+  const description = metaDescription ? metaDescription.getAttribute('content') : '';
+
+  return {
+    title,
+    url,
+    description,
+    content: content.slice(0, 50000), // 限制内容长度
+    timestamp: Date.now()
+  };
+}
+
+/**
+ * 清理文本，移除多余空白
+ * @param {string} text - 原始文本
+ * @returns {string} 清理后的文本
+ */
+function cleanText(text) {
+  return text
+    .replace(/\s+/g, ' ')
+    .replace(/\n\s*\n/g, '\n')
+    .trim();
+}
+
+/**
+ * 从 body 中提取主要内容，排除非内容元素
+ * @returns {string} 提取的文本内容
+ */
+function extractBodyContent() {
+  // 克隆 body 以避免修改原始 DOM
+  const bodyClone = document.body.cloneNode(true);
+
+  // 移除不需要的元素
+  const selectorsToRemove = [
+    'script', 'style', 'nav', 'footer', 'header',
+    'aside', 'iframe', 'noscript', 'svg', 'form',
+    '[role="navigation"]', '[role="banner"]', '[role="contentinfo"]',
+    '.nav', '.navbar', '.footer', '.header', '.sidebar',
+    '.advertisement', '.ad', '.ads', '.social-share',
+    '#ai-sidebar-float-btn' // 移除浮窗按钮
+  ];
+
+  selectorsToRemove.forEach(selector => {
+    try {
+      bodyClone.querySelectorAll(selector).forEach(el => el.remove());
+    } catch (e) {
+      // 忽略无效选择器
+    }
+  });
+
+  return cleanText(bodyClone.innerText);
+}
+
+console.log('AI Sidebar Content Script 已加载');
