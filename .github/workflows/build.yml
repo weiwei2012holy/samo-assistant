@@ -1,0 +1,101 @@
+# @Author wei
+# @Date 2026-02-07
+# @Description GitHub Actions 工作流，用于构建和发布 Chrome 扩展
+
+name: Build and Release
+
+on:
+  push:
+    branches:
+      - master
+      - main
+    tags:
+      - 'v*'
+  pull_request:
+    branches:
+      - master
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 检出代码
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # 设置 Node.js 环境
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      # 安装依赖
+      - name: Install dependencies
+        run: npm ci
+
+      # 生成图标
+      - name: Generate icons
+        run: node scripts/generate-icons.cjs
+
+      # 构建项目
+      - name: Build
+        run: npm run build
+
+      # 上传构建产物（用于 PR 预览）
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-sidebar-extension
+          path: dist/
+          retention-days: 7
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    # 仅在推送 tag 时执行发布
+    if: startsWith(github.ref, 'refs/tags/v')
+
+    steps:
+      # 检出代码
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # 设置 Node.js 环境
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      # 安装依赖
+      - name: Install dependencies
+        run: npm ci
+
+      # 生成图标
+      - name: Generate icons
+        run: node scripts/generate-icons.cjs
+
+      # 构建项目
+      - name: Build
+        run: npm run build
+
+      # 创建 ZIP 压缩包
+      - name: Create ZIP archive
+        run: |
+          cd dist
+          zip -r ../ai-sidebar-${{ github.ref_name }}.zip .
+          cd ..
+
+      # 创建 GitHub Release
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: ai-sidebar-${{ github.ref_name }}.zip
+          generate_release_notes: true
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
