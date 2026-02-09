@@ -1,4 +1,4 @@
-# AI Sidebar - 智能页面助手
+# "Samo 助手(AI Sidebar) - 智能页面助手
 
 [![Build and Release](https://github.com/weiwei2012holy/ai-sidebar/actions/workflows/build.yml/badge.svg)](https://github.com/weiwei2012holy/ai-sidebar/actions/workflows/build.yml)
 [![GitHub Release](https://img.shields.io/github/v/release/weiwei2012holy/ai-sidebar)](https://github.com/weiwei2012holy/ai-sidebar/releases)
