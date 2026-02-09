@@ -312,7 +312,7 @@ export const App: React.FC = () => {
     <div className="flex flex-col h-full bg-background">
       {/* 头部 */}
       <div className="flex items-center justify-between p-3 border-b">
-        <h1 className="text-base font-semibold">AI 助手</h1>
+        <h1 className="text-base font-semibold">Samo 助手</h1>
         <div className="flex items-center gap-1">
           {/* 思考模式开关 */}
           <Tooltip
@@ -436,7 +436,7 @@ export const App: React.FC = () => {
             <div className="text-center py-8">
               <Bot className="h-12 w-12 mx-auto mb-4 text-muted-foreground opacity-50" />
               <p className="text-sm text-muted-foreground mb-4">
-                AI 可以帮你总结页面或回答问题
+                Samo 可以帮你总结页面或回答问题
               </p>
               {pageContent && configValid && (
                 <Button

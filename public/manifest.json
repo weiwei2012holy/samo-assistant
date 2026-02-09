@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "AI Samoyed - 智能页面助手",
+  "name": "Samo 助手 - 智能页面助手",
   "description": "可爱的萨摩耶是你贴心的AI助手 The adorable Samoyed is your thoughtful AI assistant.",
   "version": "1.0.0",
   "icons": {
@@ -39,6 +39,6 @@
       "48": "icons/icon48.png",
       "128": "icons/icon128.png"
     },
-    "default_title": "打开 AI 侧边栏"
+    "default_title": "打开 Samo 助手"
   }
 }
