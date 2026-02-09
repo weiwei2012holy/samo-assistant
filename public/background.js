@@ -86,7 +86,7 @@ chrome.runtime.onInstalled.addListener(() => {
   // 创建父菜单
   chrome.contextMenus.create({
     id: 'ai-sidebar-parent',
-    title: 'AI 助手',
+    title: 'Samo 助手',
     contexts: ['selection']
   });
 
@@ -130,7 +130,7 @@ chrome.runtime.onInstalled.addListener(() => {
     contexts: ['selection']
   });
 
-  console.log('AI Sidebar 扩展已安装，右键菜单已创建');
+  console.log('Samo 助手扩展已安装，右键菜单已创建');
 });
 
 /**
