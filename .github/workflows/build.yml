@@ -89,12 +89,36 @@ jobs:
           zip -r ../ai-sidebar-${{ github.ref_name }}.zip .
           cd ..
 
+      # 获取最新提交信息用于 Release 说明
+      - name: Get commit message
+        id: commit_message
+        run: |
+          echo "message<<EOF" >> $GITHUB_OUTPUT
+          git log --pretty=format:"- %s" $(git describe --tags --abbrev=0 HEAD^)..HEAD >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
       # 创建 GitHub Release
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
           files: ai-sidebar-${{ github.ref_name }}.zip
-          generate_release_notes: true
+          body: |
+            ## AI Sidebar Chrome 扩展 ${{ github.ref_name }}
+            
+            ### 🚀 新功能与改进
+            ${{ steps.commit_message.outputs.message }}
+            
+            ### 📦 安装说明
+            1. 下载 `ai-sidebar-${{ github.ref_name }}.zip` 文件
+            2. 解压到本地文件夹
+            3. 打开 Chrome 浏览器，进入 `chrome://extensions/`
+            4. 开启"开发者模式"
+            5. 点击"加载已解压的扩展程序"，选择解压后的文件夹
+            
+            ### 🔗 相关链接
+            - [项目主页](https://github.com/weiwei2012holy/ai-sidebar)
+            - [使用文档](https://github.com/weiwei2012holy/ai-sidebar/blob/master/README.md)
+          generate_release_notes: false
           draft: false
           prerelease: false
         env:
