@@ -6,6 +6,10 @@
 
 一款 Chrome 浏览器侧边栏插件，使用大模型总结和对话当前网页内容。
 
+## 关于命名
+
+可爱的萨摩耶是你贴心的 AI 助手！这只毛茸茸的小狗是开发者的宠物，它温暖、友好、总是乐于助人的性格正是我们希望这个 AI 助手带给你的体验。
+
 ## 下载安装
 
 ### 方式一：从 Release 下载（推荐）
@@ -41,6 +45,10 @@ npm run build
 - **多供应商支持**：支持 OpenAI、Anthropic (Claude)、DeepSeek 等多种大模型
 - **数据同步**：使用 chrome.storage.sync 同步配置，多设备无缝使用
 - **流式响应**：支持流式输出，实时查看 AI 回复
+- **Markdown 渲染**：支持 Markdown 格式的 AI 回复
+- **右键菜单**：选中文本后右键可快速翻译、解释、总结
+- **浮窗按钮**：页面右下角的萨摩耶图标，快捷打开/关闭侧边栏或一键总结页面
+- **标签页隔离**：每个标签页独立的对话上下文
 
 ## 配置
 
@@ -53,9 +61,20 @@ npm run build
 
 ## 使用方法
 
-1. 在任意网页上点击扩展图标打开侧边栏
-2. **总结页面**：在「总结」标签页点击「生成页面总结」
-3. **对话**：切换到「对话」标签页，输入问题与 AI 对话
+### 基本使用
+1. 在任意网页上点击扩展图标或页面右下角的萨摩耶图标打开侧边栏
+2. 点击「一键总结页面」生成页面摘要
+3. 在输入框中输入问题与 AI 对话
+
+### 右键菜单
+1. 在网页上选中文本
+2. 右键点击选择「AI 助手」
+3. 选择翻译、解释、总结或提问
+
+### 浮窗按钮
+- 点击萨摩耶图标展开菜单
+- 点击侧边栏图标：打开/关闭侧边栏
+- 点击星星图标：一键总结当前页面
 
 ## 技术栈
 
@@ -73,15 +92,18 @@ ai-sidebar/
 ├── public/                 # 静态资源
 │   ├── manifest.json      # Chrome 扩展清单
 │   ├── background.js      # Service Worker
-│   ├── content.js         # 内容脚本
+│   ├── content.js         # 内容脚本（浮窗按钮、页面内容提取）
+│   ├── content.css        # 浮窗样式
 │   └── icons/             # 图标文件
 ├── src/
 │   ├── components/        # React 组件
 │   │   ├── ui/           # 基础 UI 组件
-│   │   ├── ChatPanel.tsx # 聊天面板
-│   │   ├── SummaryPanel.tsx # 总结面板
+│   │   ├── Markdown.tsx  # Markdown 渲染组件
 │   │   └── SettingsPanel.tsx # 设置面板
 │   ├── hooks/            # 自定义 Hooks
+│   │   ├── useSettings.ts   # 设置管理
+│   │   ├── usePageContent.ts # 页面内容获取
+│   │   └── useChat.ts       # 聊天状态管理
 │   ├── services/         # 服务层
 │   │   ├── ai.ts        # AI API 调用
 │   │   └── storage.ts   # Chrome 存储
@@ -98,7 +120,29 @@ ai-sidebar/
 | OpenAI | gpt-4o, gpt-4o-mini, gpt-4-turbo, gpt-3.5-turbo |
 | Anthropic | claude-sonnet-4-5-20250929, claude-3-5-sonnet, claude-3-5-haiku |
 | DeepSeek | deepseek-chat, deepseek-reasoner |
+| OpenRouter | 自动获取免费模型列表 |
 | 自定义 | 任何 OpenAI 兼容的 API |
+
+### OpenRouter 免费模型
+
+[OpenRouter](https://openrouter.ai) 是一个 AI 模型路由服务，提供多个免费模型供使用。选择 OpenRouter 供应商后：
+
+1. 会自动获取当前可用的免费模型列表
+2. 模型名称后会显示上下文长度（如 128K）
+3. 点击刷新按钮可以获取最新的模型列表
+4. 需要在 [OpenRouter](https://openrouter.ai/keys) 获取 API 密钥
+
+## 自定义图标
+
+如果你想使用自己的图片作为应用图标：
+
+```bash
+# 使用你的图片生成图标
+node scripts/generate-icons-from-image.cjs 你的图片.png
+
+# 重新构建
+npm run build
+```
 
 ## 许可证
 

@@ -7,7 +7,7 @@
 /**
  * 支持的大模型供应商
  */
-export type ModelProvider = 'openai' | 'anthropic' | 'deepseek' | 'custom';
+export type ModelProvider = 'openai' | 'anthropic' | 'deepseek' | 'openrouter' | 'custom';
 
 /**
  * 模型供应商配置
@@ -24,13 +24,22 @@ export interface ProviderConfig {
 }
 
 /**
+ * 所有供应商的配置映射
+ */
+export type ProviderConfigMap = Partial<Record<ModelProvider, ProviderConfig>>;
+
+/**
  * 应用设置
  */
 export interface AppSettings {
-  /** 当前使用的供应商配置 */
-  providerConfig: ProviderConfig;
+  /** 当前使用的供应商标识 */
+  currentProvider: ModelProvider;
+  /** 所有供应商的配置 */
+  providerConfigs: ProviderConfigMap;
   /** 主题模式 */
   theme: 'light' | 'dark' | 'system';
+  /** 是否启用思考模式（用于 DeepSeek Reasoner 等模型） */
+  enableReasoning: boolean;
 }
 
 /**
@@ -110,4 +119,18 @@ export interface ProviderOption {
   models: string[];
   /** 默认 API URL */
   defaultBaseUrl: string;
+}
+
+/**
+ * OpenRouter 模型信息
+ */
+export interface OpenRouterModel {
+  /** 模型 ID */
+  id: string;
+  /** 模型名称 */
+  name: string;
+  /** 是否免费 */
+  isFree: boolean;
+  /** 上下文长度 */
+  contextLength?: number;
 }

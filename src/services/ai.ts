@@ -4,13 +4,14 @@
  * @Description 大模型 API 调用服务，支持多供应商
  **/
 
-import { ProviderConfig, APIResponse, ChatMessage } from '@/types';
+import { ProviderConfig, APIResponse, ChatMessage, OpenRouterModel } from '@/types';
 
 // 供应商 API 基础 URL 映射
 const PROVIDER_BASE_URLS: Record<string, string> = {
   openai: 'https://api.openai.com/v1',
   anthropic: 'https://api.anthropic.com/v1',
   deepseek: 'https://api.deepseek.com/v1',
+  openrouter: 'https://openrouter.ai/api/v1',
 };
 
 /**
@@ -19,11 +20,16 @@ const PROVIDER_BASE_URLS: Record<string, string> = {
 class AIService {
   /**
    * 调用 OpenAI 兼容的 API（OpenAI、DeepSeek 等）
+   * @param config - 供应商配置
+   * @param messages - 消息列表
+   * @param onStream - 流式响应回调
+   * @param enableReasoning - 是否启用思考模式
    */
   private async callOpenAICompatible(
     config: ProviderConfig,
     messages: { role: string; content: string }[],
-    onStream?: (chunk: string) => void
+    onStream?: (chunk: string) => void,
+    enableReasoning: boolean = false
   ): Promise<APIResponse> {
     const baseUrl = config.baseUrl || PROVIDER_BASE_URLS[config.provider] || PROVIDER_BASE_URLS.openai;
     const url = `${baseUrl}/chat/completions`;
@@ -51,6 +57,8 @@ class AIService {
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let fullContent = '';
+      let fullReasoning = '';
+      let reasoningEnded = false;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -65,8 +73,29 @@ class AIService {
 
           try {
             const parsed = JSON.parse(data);
-            const content = parsed.choices?.[0]?.delta?.content || '';
+            const delta = parsed.choices?.[0]?.delta;
+
+            // 处理 DeepSeek Reasoner 的思考内容（仅在启用思考模式时显示）
+            if (enableReasoning) {
+              const reasoningContent = delta?.reasoning_content || '';
+              if (reasoningContent) {
+                // 首次输出思考内容时，添加开始标记
+                if (!fullReasoning) {
+                  onStream('<think>\n');
+                }
+                fullReasoning += reasoningContent;
+                onStream(reasoningContent);
+              }
+            }
+
+            // 处理普通内容
+            const content = delta?.content || '';
             if (content) {
+              // 思考结束，输出结束标记（仅在启用思考模式且有思考内容时）
+              if (enableReasoning && fullReasoning && !reasoningEnded) {
+                reasoningEnded = true;
+                onStream('\n</think>\n\n');
+              }
               fullContent += content;
               onStream(content);
             }
@@ -76,7 +105,16 @@ class AIService {
         }
       }
 
-      return { content: fullContent };
+      // 如果只有思考内容没有普通内容，也要关闭标签
+      if (enableReasoning && fullReasoning && !reasoningEnded) {
+        onStream('\n</think>\n');
+      }
+
+      // 返回完整内容（包含思考过程，仅在启用时）
+      const finalContent = enableReasoning && fullReasoning
+        ? `<think>\n${fullReasoning}\n</think>\n\n${fullContent}`
+        : fullContent;
+      return { content: finalContent };
     }
 
     // 非流式响应
@@ -184,12 +222,14 @@ class AIService {
    * @param messages - 聊天消息历史
    * @param systemPrompt - 系统提示词
    * @param onStream - 流式响应回调
+   * @param enableReasoning - 是否启用思考模式
    */
   async chat(
     config: ProviderConfig,
     messages: ChatMessage[],
     systemPrompt?: string,
-    onStream?: (chunk: string) => void
+    onStream?: (chunk: string) => void,
+    enableReasoning: boolean = false
   ): Promise<APIResponse> {
     // 构建消息列表
     const formattedMessages: { role: string; content: string }[] = [];
@@ -210,7 +250,7 @@ class AIService {
       return this.callAnthropic(config, formattedMessages, systemPrompt, onStream);
     }
 
-    return this.callOpenAICompatible(config, formattedMessages, onStream);
+    return this.callOpenAICompatible(config, formattedMessages, onStream, enableReasoning);
   }
 
   /**
@@ -218,11 +258,13 @@ class AIService {
    * @param config - 供应商配置
    * @param pageContent - 页面内容
    * @param onStream - 流式响应回调
+   * @param enableReasoning - 是否启用思考模式
    */
   async summarize(
     config: ProviderConfig,
     pageContent: string,
-    onStream?: (chunk: string) => void
+    onStream?: (chunk: string) => void,
+    enableReasoning: boolean = false
   ): Promise<APIResponse> {
     const systemPrompt = `你是一个专业的内容分析助手。请对用户提供的网页内容进行总结分析。
 
@@ -243,7 +285,47 @@ class AIService {
       },
     ];
 
-    return this.chat(config, messages, systemPrompt, onStream);
+    return this.chat(config, messages, systemPrompt, onStream, enableReasoning);
+  }
+
+  /**
+   * 获取 OpenRouter 免费模型列表
+   * @returns 免费模型列表
+   */
+  async getOpenRouterFreeModels(): Promise<OpenRouterModel[]> {
+    try {
+      const response = await fetch('https://openrouter.ai/api/v1/models');
+
+      if (!response.ok) {
+        throw new Error(`获取模型列表失败: ${response.status}`);
+      }
+
+      const data = await response.json();
+      const models: OpenRouterModel[] = [];
+
+      // 筛选免费模型（prompt 和 completion 价格都为 0）
+      for (const model of data.data || []) {
+        const promptPrice = parseFloat(model.pricing?.prompt || '1');
+        const completionPrice = parseFloat(model.pricing?.completion || '1');
+
+        if (promptPrice === 0 && completionPrice === 0) {
+          models.push({
+            id: model.id,
+            name: model.name || model.id,
+            isFree: true,
+            contextLength: model.context_length,
+          });
+        }
+      }
+
+      // 按名称排序
+      models.sort((a, b) => a.name.localeCompare(b.name));
+
+      return models;
+    } catch (error) {
+      console.error('获取 OpenRouter 模型列表失败:', error);
+      return [];
+    }
   }
 }
 

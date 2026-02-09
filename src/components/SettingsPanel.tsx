@@ -4,14 +4,15 @@
  * @Description 设置面板组件，用于配置大模型供应商和 API 密钥
  **/
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { ProviderConfig, ProviderOption, ModelProvider } from '@/types';
-import { ArrowLeft, Eye, EyeOff, Save, Check } from 'lucide-react';
+import { ProviderConfig, ProviderOption, ModelProvider, OpenRouterModel } from '@/types';
+import { aiService } from '@/services/ai';
+import { ArrowLeft, Eye, EyeOff, Save, Check, RefreshCw, Loader2 } from 'lucide-react';
 
 // 供应商选项配置
 const PROVIDER_OPTIONS: ProviderOption[] = [
@@ -34,6 +35,12 @@ const PROVIDER_OPTIONS: ProviderOption[] = [
     defaultBaseUrl: 'https://api.deepseek.com/v1',
   },
   {
+    value: 'openrouter',
+    label: 'OpenRouter (免费模型)',
+    models: [], // 将动态加载
+    defaultBaseUrl: 'https://openrouter.ai/api/v1',
+  },
+  {
     value: 'custom',
     label: '自定义 (OpenAI 兼容)',
     models: [],
@@ -48,6 +55,8 @@ interface SettingsPanelProps {
   onSave: (config: ProviderConfig) => Promise<void>;
   /** 返回按钮回调 */
   onBack: () => void;
+  /** 获取指定供应商的配置 */
+  getProviderConfig?: (provider: ModelProvider) => ProviderConfig;
 }
 
 /**
@@ -57,6 +66,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
   config,
   onSave,
   onBack,
+  getProviderConfig,
 }) => {
   // 表单状态
   const [provider, setProvider] = useState<ModelProvider>(config.provider);
@@ -70,18 +80,85 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
+  // OpenRouter 免费模型列表
+  const [openRouterModels, setOpenRouterModels] = useState<OpenRouterModel[]>([]);
+  const [loadingModels, setLoadingModels] = useState(false);
+
+  // 标记是否是初始化加载
+  const isInitialMount = useRef(true);
+
   // 获取当前供应商选项
   const currentProviderOption = PROVIDER_OPTIONS.find(p => p.value === provider);
 
-  // 供应商变更时更新默认值
+  // 获取 OpenRouter 免费模型
+  const fetchOpenRouterModels = async (currentModel?: string) => {
+    setLoadingModels(true);
+    try {
+      const models = await aiService.getOpenRouterFreeModels();
+      setOpenRouterModels(models);
+      // 如果有模型且当前没有选择有效模型，默认选择第一个
+      if (models.length > 0) {
+        const hasValidModel = currentModel && models.some(m => m.id === currentModel);
+        if (!hasValidModel) {
+          setModel(models[0].id);
+        }
+      }
+    } catch (error) {
+      console.error('获取 OpenRouter 模型失败:', error);
+    } finally {
+      setLoadingModels(false);
+    }
+  };
+
+  // 供应商变更时加载对应的已保存配置
   useEffect(() => {
-    if (currentProviderOption) {
-      setBaseUrl(currentProviderOption.defaultBaseUrl);
-      if (currentProviderOption.models.length > 0) {
+    // 跳过初始化加载
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      // 初始化时，如果是 OpenRouter 供应商，加载模型列表
+      if (provider === 'openrouter') {
+        fetchOpenRouterModels(config.model);
+      }
+      return;
+    }
+
+    // 切换供应商时，加载已保存的配置
+    if (getProviderConfig) {
+      const savedConfig = getProviderConfig(provider);
+      setApiKey(savedConfig.apiKey);
+      setBaseUrl(savedConfig.baseUrl || currentProviderOption?.defaultBaseUrl || '');
+      setModel(savedConfig.model);
+      if (provider === 'custom') {
+        setCustomModel(savedConfig.model);
+      }
+    } else {
+      // 如果没有 getProviderConfig，使用默认值
+      setBaseUrl(currentProviderOption?.defaultBaseUrl || '');
+      if (currentProviderOption?.models.length) {
         setModel(currentProviderOption.models[0]);
       }
     }
-  }, [provider, currentProviderOption]);
+
+    // 如果选择了 OpenRouter，自动加载免费模型
+    if (provider === 'openrouter') {
+      const savedConfig = getProviderConfig?.(provider);
+      fetchOpenRouterModels(savedConfig?.model);
+    }
+  }, [provider]);
+
+  // 获取当前可用的模型列表
+  const getAvailableModels = () => {
+    if (provider === 'openrouter') {
+      return openRouterModels.map(m => ({
+        value: m.id,
+        label: `${m.name}${m.contextLength ? ` (${Math.floor(m.contextLength / 1000)}K)` : ''}`,
+      }));
+    }
+    return currentProviderOption?.models.map(m => ({
+      value: m,
+      label: m,
+    })) || [];
+  };
 
   // 保存配置
   const handleSave = async () => {
@@ -102,6 +179,13 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
     }
   };
 
+  // 判断当前供应商是否已配置（有 API 密钥）
+  const isProviderConfigured = (p: ModelProvider): boolean => {
+    if (!getProviderConfig) return false;
+    const config = getProviderConfig(p);
+    return !!config.apiKey;
+  };
+
   return (
     <div className="flex flex-col h-full bg-background">
       {/* 头部 */}
@@ -119,15 +203,18 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-base">模型供应商</CardTitle>
-              <CardDescription>选择您的 AI 模型提供商</CardDescription>
+              <CardDescription>选择您的 AI 模型提供商，已配置的供应商会显示 ✓</CardDescription>
             </CardHeader>
             <CardContent>
               <Select
                 value={provider}
-                onChange={(e) => setProvider(e.target.value as ModelProvider)}
+                onChange={(e) => {
+                  const newProvider = e.target.value as ModelProvider;
+                  setProvider(newProvider);
+                }}
                 options={PROVIDER_OPTIONS.map(p => ({
                   value: p.value,
-                  label: p.label,
+                  label: isProviderConfigured(p.value) ? `${p.label} ✓` : p.label,
                 }))}
               />
             </CardContent>
@@ -168,8 +255,31 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
           {/* 模型选择 */}
           <Card>
             <CardHeader className="pb-3">
-              <CardTitle className="text-base">模型</CardTitle>
-              <CardDescription>选择要使用的模型</CardDescription>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="text-base">模型</CardTitle>
+                  <CardDescription>
+                    {provider === 'openrouter'
+                      ? `选择免费模型 (${openRouterModels.length} 个可用)`
+                      : '选择要使用的模型'}
+                  </CardDescription>
+                </div>
+                {provider === 'openrouter' && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => fetchOpenRouterModels()}
+                    disabled={loadingModels}
+                    title="刷新模型列表"
+                  >
+                    {loadingModels ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <RefreshCw className="h-4 w-4" />
+                    )}
+                  </Button>
+                )}
+              </div>
             </CardHeader>
             <CardContent>
               {provider === 'custom' ? (
@@ -178,16 +288,16 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                   onChange={(e) => setCustomModel(e.target.value)}
                   placeholder="输入模型名称，如 gpt-4"
                 />
+              ) : loadingModels ? (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  正在加载模型列表...
+                </div>
               ) : (
                 <Select
                   value={model}
                   onChange={(e) => setModel(e.target.value)}
-                  options={
-                    currentProviderOption?.models.map(m => ({
-                      value: m,
-                      label: m,
-                    })) || []
-                  }
+                  options={getAvailableModels()}
                 />
               )}
             </CardContent>

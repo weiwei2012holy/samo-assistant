@@ -6,7 +6,8 @@
       "Bash(node scripts/generate-icons.js:*)",
       "Bash(node scripts/generate-icons.cjs:*)",
       "Bash(npm install:*)",
-      "Bash(npm run build:*)"
+      "Bash(npm run build:*)",
+      "Bash(node:*)"
     ],
     "deny": [],
     "ask": []
