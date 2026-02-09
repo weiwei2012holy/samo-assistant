@@ -168,12 +168,21 @@ function createFloatButton() {
   }, true);
 }
 
-// 页面加载后创建浮窗
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', createFloatButton);
-} else {
-  createFloatButton();
+// 页面加载后创建浮窗（仅在主页面，不在 iframe 中）
+function initFloatButton() {
+  // 检查是否在 iframe 中
+  const isInIframe = window !== window.top;
+
+  if (!isInIframe) {
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', createFloatButton);
+    } else {
+      createFloatButton();
+    }
+  }
 }
+
+initFloatButton();
 
 // ==================== 页面内容提取功能 ====================
 
@@ -277,19 +286,23 @@ let currentHoverElement = null;
 let translatingElement = null;
 let translateShortcut = 'Control';
 let providerConfig = null;
-const translatedTexts = new Map(); // 缓存已翻译的文本
+let configLoaded = false;  // 标记配置是否已加载完成
+const translatedTexts = new Map();
 
-// 加载翻译配置
+// 加载翻译配置（返回 Promise 以支持等待）
 function loadTranslateConfig() {
-  chrome.storage.sync.get('ai_sidebar_settings', (result) => {
-    const settings = result.ai_sidebar_settings || {};
-    translateShortcut = settings.translateShortcut || 'Control';
+  return new Promise((resolve) => {
+    chrome.storage.sync.get('ai_sidebar_settings', (result) => {
+      const settings = result.ai_sidebar_settings || {};
+      translateShortcut = settings.translateShortcut || 'Control';
 
-    // 获取当前供应商配置
-    const currentProvider = settings.currentProvider || 'openai';
-    providerConfig = settings.providerConfigs?.[currentProvider];
+      const currentProvider = settings.currentProvider || 'openai';
+      providerConfig = settings.providerConfigs?.[currentProvider];
+      configLoaded = true;
 
-    console.log('翻译配置已加载:', { translateShortcut, provider: currentProvider });
+      console.log('翻译配置已加载:', { translateShortcut, provider: currentProvider });
+      resolve();
+    });
   });
 }
 
@@ -549,6 +562,11 @@ function updateTranslationContent(container, content) {
 async function checkAndTranslate() {
   if (!translateModeActive) return;
 
+  // 等待配置加载完成
+  if (!configLoaded) {
+    await loadTranslateConfig();
+  }
+
   const target = getTranslateTarget();
   if (!target) return;
 
@@ -616,7 +634,28 @@ document.addEventListener('keydown', (e) => {
     translateModeActive = true;
     document.body.classList.add('ai-sidebar-translate-mode');
     console.log('翻译模式已激活');
-    checkAndTranslate();
+    
+    ensureCurrentElement();
+    
+    // 如果仍然没有获取到元素（用户还没有移动过鼠标）
+    // 添加一次性监听器，等待鼠标移动后自动翻译
+    if (!currentHoverElement) {
+      const onFirstInteraction = (ev) => {
+        if (!translateModeActive) {
+          document.removeEventListener('pointermove', onFirstInteraction, true);
+          return;
+        }
+        updateMousePosition(ev);
+        if (currentHoverElement) {
+          checkAndTranslate();
+          document.removeEventListener('pointermove', onFirstInteraction, true);
+        }
+      };
+      document.addEventListener('pointermove', onFirstInteraction, { capture: true, passive: true });
+      console.log('等待鼠标移动以确定翻译目标...');
+    } else {
+      checkAndTranslate();
+    }
   }
 }, true);  // 使用捕获阶段
 
@@ -636,15 +675,78 @@ document.addEventListener('keyup', (e) => {
   }
 }, true);  // 使用捕获阶段
 
-// 鼠标悬停检测
-document.addEventListener('mousemove', (e) => {
+// 鼠标位置追踪
+let lastMouseX = null;
+let lastMouseY = null;
+let hasMousePosition = false;
+
+// 统一的鼠标位置更新函数
+function updateMousePosition(e) {
+  lastMouseX = e.clientX;
+  lastMouseY = e.clientY;
+  hasMousePosition = true;
   const element = document.elementFromPoint(e.clientX, e.clientY);
-  if (element !== currentHoverElement) {
+  if (element && element !== currentHoverElement) {
     currentHoverElement = element;
     if (translateModeActive) {
       checkAndTranslate();
     }
   }
-});
+}
 
-console.log('Samo 助手 Content Script 已加载');
+// 使用 pointermove 替代 mousemove（更早触发，支持触摸设备）
+document.addEventListener('pointermove', updateMousePosition, { passive: true });
+
+// 使用 pointerover 捕获指针进入元素的事件
+document.addEventListener('pointerover', (e) => {
+  if (e.target && e.target !== currentHoverElement) {
+    currentHoverElement = e.target;
+    lastMouseX = e.clientX;
+    lastMouseY = e.clientY;
+    hasMousePosition = true;
+  }
+}, { passive: true });
+
+// 页面加载后的一次性初始化：尝试通过模拟事件获取鼠标位置
+// 这解决了页面加载时鼠标已在页面上但没有触发任何事件的问题
+function initMouseTracking() {
+  if (hasMousePosition) return;
+  
+  // 添加一个一次性的 mousemove 监听器来捕获第一次鼠标移动
+  const onFirstMove = (e) => {
+    if (!hasMousePosition) {
+      updateMousePosition(e);
+    }
+    document.removeEventListener('mousemove', onFirstMove, true);
+  };
+  document.addEventListener('mousemove', onFirstMove, { capture: true, passive: true });
+}
+
+// 延迟初始化，确保 DOM 完全加载
+if (document.readyState === 'complete') {
+  initMouseTracking();
+} else {
+  window.addEventListener('load', initMouseTracking);
+}
+
+// 确保在按下快捷键时能获取到当前元素
+function ensureCurrentElement() {
+  if (currentHoverElement) return;
+  
+  // 如果有鼠标位置记录，尝试获取该位置的元素
+  if (hasMousePosition && lastMouseX !== null && lastMouseY !== null) {
+    currentHoverElement = document.elementFromPoint(lastMouseX, lastMouseY);
+  }
+  
+  // 后备：使用 activeElement
+  if (!currentHoverElement) {
+    const activeElement = document.activeElement;
+    if (activeElement && activeElement !== document.body && activeElement !== document.documentElement) {
+      currentHoverElement = activeElement;
+    }
+  }
+}
+
+// 判断是否在 iframe 中
+const isInIframe = window !== window.top;
+console.log(`Samo 助手 Content Script 已加载${isInIframe ? ' (iframe)' : ''}`);
