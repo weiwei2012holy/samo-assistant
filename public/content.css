@@ -187,3 +187,126 @@
     height: 16px;
   }
 }
+
+/* ==================== 悬停翻译样式 ==================== */
+
+/* 翻译模式激活时的视觉提示 */
+.ai-sidebar-translate-mode {
+  cursor: crosshair !important;
+}
+
+/* 翻译结果容器 */
+.ai-sidebar-translation {
+  margin: 8px 0;
+  padding: 10px 14px;
+  background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+  border-left: 3px solid #0ea5e9;
+  border-radius: 0 8px 8px 0;
+  font-size: 14px;
+  line-height: 1.6;
+  color: #1e293b;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  animation: ai-sidebar-fade-in 0.2s ease;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  position: relative;
+  z-index: 2147483646;
+}
+
+/* 关闭按钮 - 右上角悬浮 */
+.ai-sidebar-translation-close {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 20px;
+  height: 20px;
+  border: none;
+  background: transparent;
+  color: #94a3b8;
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+  opacity: 0;
+}
+
+.ai-sidebar-translation:hover .ai-sidebar-translation-close {
+  opacity: 1;
+}
+
+.ai-sidebar-translation-close:hover {
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.1);
+}
+
+/* 翻译内容 */
+.ai-sidebar-translation-content {
+  color: #334155;
+  word-break: break-word;
+  white-space: pre-wrap;
+  padding-right: 20px;
+}
+
+/* 加载状态 */
+.ai-sidebar-translation-loading .ai-sidebar-translation-content::after {
+  content: '▋';
+  animation: ai-sidebar-blink 0.7s infinite;
+  margin-left: 2px;
+}
+
+/* 淡入动画 */
+@keyframes ai-sidebar-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* 光标闪烁动画 */
+@keyframes ai-sidebar-blink {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
+}
+
+/* 深色模式 */
+@media (prefers-color-scheme: dark) {
+  .ai-sidebar-translation {
+    background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+    color: #e2e8f0;
+    border-left-color: #38bdf8;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  }
+
+  .ai-sidebar-translation-content {
+    color: #cbd5e1;
+  }
+
+  .ai-sidebar-translation-close {
+    color: #64748b;
+  }
+
+  .ai-sidebar-translation-close:hover {
+    color: #f87171;
+    background: rgba(248, 113, 113, 0.1);
+  }
+}
+
+/* 响应式：小屏幕调整 */
+@media (max-width: 480px) {
+  .ai-sidebar-translation {
+    padding: 8px 12px;
+    font-size: 13px;
+    margin: 6px 0;
+  }
+}

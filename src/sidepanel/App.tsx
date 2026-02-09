@@ -59,6 +59,7 @@ export const App: React.FC = () => {
     updateProviderConfig,
     getProviderConfig,
     updateEnableReasoning,
+    updateTranslateShortcut,
     isConfigValid,
   } = useSettings();
 
@@ -304,6 +305,8 @@ export const App: React.FC = () => {
         onSave={updateProviderConfig}
         onBack={() => setView('main')}
         getProviderConfig={getProviderConfig}
+        translateShortcut={settings.translateShortcut}
+        onUpdateTranslateShortcut={updateTranslateShortcut}
       />
     );
   }

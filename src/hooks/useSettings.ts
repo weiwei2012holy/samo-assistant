@@ -14,6 +14,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   providerConfigs: {},
   theme: 'system',
   enableReasoning: false,
+  translateShortcut: 'Control',
 };
 
 /**
@@ -119,6 +120,12 @@ export function useSettings() {
     await saveSettings(newSettings);
   }, [settings, saveSettings]);
 
+  // 更新悬停翻译快捷键
+  const updateTranslateShortcut = useCallback(async (shortcut: string) => {
+    const newSettings = { ...settings, translateShortcut: shortcut };
+    await saveSettings(newSettings);
+  }, [settings, saveSettings]);
+
   // 检查配置是否有效
   const isConfigValid = useCallback(() => {
     return !!(providerConfig.apiKey && providerConfig.model);
@@ -134,6 +141,7 @@ export function useSettings() {
     switchProvider,
     updateTheme,
     updateEnableReasoning,
+    updateTranslateShortcut,
     isConfigValid,
   };
 }

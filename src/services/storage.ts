@@ -51,6 +51,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   providerConfigs: {},
   theme: 'system',
   enableReasoning: false,
+  translateShortcut: 'Control',
 };
 
 /**
@@ -182,6 +183,16 @@ class StorageService {
   async updateEnableReasoning(enabled: boolean): Promise<void> {
     const settings = await this.getSettings();
     settings.enableReasoning = enabled;
+    await this.saveSettings(settings);
+  }
+
+  /**
+   * 更新悬停翻译快捷键
+   * @param shortcut - 快捷键（Control/Alt/Shift/Meta）
+   */
+  async updateTranslateShortcut(shortcut: string): Promise<void> {
+    const settings = await this.getSettings();
+    settings.translateShortcut = shortcut;
     await this.saveSettings(settings);
   }
 
