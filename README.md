@@ -1,7 +1,7 @@
 # AI Sidebar - 智能页面助手
 
-[![Build and Release](https://github.com/YOUR_USERNAME/ai-sidebar/actions/workflows/build.yml/badge.svg)](https://github.com/YOUR_USERNAME/ai-sidebar/actions/workflows/build.yml)
-[![GitHub Release](https://img.shields.io/github/v/release/YOUR_USERNAME/ai-sidebar)](https://github.com/YOUR_USERNAME/ai-sidebar/releases)
+[![Build and Release](https://github.com/weiwei2012holy/ai-sidebar/actions/workflows/build.yml/badge.svg)](https://github.com/weiwei2012holy/ai-sidebar/actions/workflows/build.yml)
+[![GitHub Release](https://img.shields.io/github/v/release/weiwei2012holy/ai-sidebar)](https://github.com/weiwei2012holy/ai-sidebar/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 一款 Chrome 浏览器侧边栏插件，使用大模型总结和对话当前网页内容。
@@ -14,7 +14,7 @@
 
 ### 方式一：从 Release 下载（推荐）
 
-1. 前往 [Releases 页面](https://github.com/YOUR_USERNAME/ai-sidebar/releases)
+1. 前往 [Releases 页面](https://github.com/weiwei2012holy/ai-sidebar/releases)
 2. 下载最新版本的 `ai-sidebar-vX.X.X.zip`
 3. 解压 ZIP 文件
 4. 打开 Chrome 浏览器，访问 `chrome://extensions/`
@@ -26,7 +26,7 @@
 
 ```bash
 # 克隆仓库
-git clone https://github.com/YOUR_USERNAME/ai-sidebar.git
+git clone https://github.com/weiwei2012holy/ai-sidebar.git
 cd ai-sidebar
 
 # 安装依赖
