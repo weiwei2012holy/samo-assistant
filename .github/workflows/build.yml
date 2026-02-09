@@ -1,14 +1,11 @@
 # @Author wei
 # @Date 2026-02-07
-# @Description GitHub Actions 工作流，用于构建和发布 Chrome 扩展
+# @Description GitHub Actions 工作流，用于构建和发布 Samo 助手 Chrome 扩展
 
 name: Build and Release
 
 on:
   push:
-    branches:
-      - master
-      - main
     tags:
       - 'v*'
   pull_request:
@@ -21,103 +18,84 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 检出代码
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # 设置 Node.js 环境
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: 'npm'
 
-      # 安装依赖
       - name: Install dependencies
         run: npm ci
 
-      # 生成图标
       - name: Generate icons
         run: node scripts/generate-icons.cjs
 
-      # 构建项目
       - name: Build
         run: npm run build
 
-      # 上传构建产物（用于 PR 预览）
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ai-sidebar-extension
+          name: samo-assistant-extension
           path: dist/
           retention-days: 7
 
   release:
     needs: build
     runs-on: ubuntu-latest
-    # 仅在推送 tag 时执行发布
     if: startsWith(github.ref, 'refs/tags/v')
 
     steps:
-      # 检出代码
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # 设置 Node.js 环境
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: 'npm'
 
-      # 安装依赖
       - name: Install dependencies
         run: npm ci
 
-      # 生成图标
       - name: Generate icons
         run: node scripts/generate-icons.cjs
 
-      # 构建项目
       - name: Build
         run: npm run build
 
-      # 创建 ZIP 压缩包
       - name: Create ZIP archive
         run: |
           cd dist
-          zip -r ../ai-sidebar-${{ github.ref_name }}.zip .
+          zip -r ../samo-assistant-${{ github.ref_name }}.zip .
           cd ..
 
-      # 获取最新提交信息用于 Release 说明
       - name: Get commit message
         id: commit_message
         run: |
           echo "message<<EOF" >> $GITHUB_OUTPUT
-          git log --pretty=format:"- %s" $(git describe --tags --abbrev=0 HEAD^)..HEAD >> $GITHUB_OUTPUT
+          git log --pretty=format:"- %s" $(git describe --tags --abbrev=0 HEAD^)..HEAD 2>/dev/null >> $GITHUB_OUTPUT || echo "- Initial release" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
-      # 创建 GitHub Release
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
-          files: ai-sidebar-${{ github.ref_name }}.zip
+          files: samo-assistant-${{ github.ref_name }}.zip
           body: |
-            ## AI Sidebar Chrome 扩展 ${{ github.ref_name }}
+            ## Samo 助手 ${{ github.ref_name }}
             
-            ### 🚀 新功能与改进
+            ### 🚀 更新内容
             ${{ steps.commit_message.outputs.message }}
             
             ### 📦 安装说明
-            1. 下载 `ai-sidebar-${{ github.ref_name }}.zip` 文件
+            1. 下载 `samo-assistant-${{ github.ref_name }}.zip` 文件
             2. 解压到本地文件夹
             3. 打开 Chrome 浏览器，进入 `chrome://extensions/`
             4. 开启"开发者模式"
             5. 点击"加载已解压的扩展程序"，选择解压后的文件夹
-            
-            ### 🔗 相关链接
-            - [项目主页](https://github.com/weiwei2012holy/ai-sidebar)
-            - [使用文档](https://github.com/weiwei2012holy/ai-sidebar/blob/master/README.md)
           generate_release_notes: false
           draft: false
           prerelease: false
