@@ -13,6 +13,9 @@ on:
       - master
       - main
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -51,6 +54,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -71,24 +76,13 @@ jobs:
         run: |
           cd dist
           zip -r ../samo-assistant-${{ github.ref_name }}.zip .
-          cd ..
-
-      - name: Get commit message
-        id: commit_message
-        run: |
-          echo "message<<EOF" >> $GITHUB_OUTPUT
-          git log --pretty=format:"- %s" $(git describe --tags --abbrev=0 HEAD^)..HEAD 2>/dev/null >> $GITHUB_OUTPUT || echo "- Initial release" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
 
       - name: Create Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           files: samo-assistant-${{ github.ref_name }}.zip
           body: |
             ## Samo 助手 ${{ github.ref_name }}
-            
-            ### 🚀 更新内容
-            ${{ steps.commit_message.outputs.message }}
             
             ### 📦 安装说明
             1. 下载 `samo-assistant-${{ github.ref_name }}.zip` 文件
@@ -96,8 +90,6 @@ jobs:
             3. 打开 Chrome 浏览器，进入 `chrome://extensions/`
             4. 开启"开发者模式"
             5. 点击"加载已解压的扩展程序"，选择解压后的文件夹
-          generate_release_notes: false
+          generate_release_notes: true
           draft: false
           prerelease: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
