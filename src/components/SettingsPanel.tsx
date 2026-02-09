@@ -57,6 +57,10 @@ interface SettingsPanelProps {
   onBack: () => void;
   /** 获取指定供应商的配置 */
   getProviderConfig?: (provider: ModelProvider) => ProviderConfig;
+  /** 翻译快捷键 */
+  translateShortcut?: string;
+  /** 更新翻译快捷键回调 */
+  onUpdateTranslateShortcut?: (shortcut: string) => Promise<void>;
 }
 
 /**
@@ -67,6 +71,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
   onSave,
   onBack,
   getProviderConfig,
+  translateShortcut = 'Control',
+  onUpdateTranslateShortcut,
 }) => {
   // 表单状态
   const [provider, setProvider] = useState<ModelProvider>(config.provider);
@@ -319,6 +325,33 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                 onChange={(e) => setBaseUrl(e.target.value)}
                 placeholder="https://api.example.com/v1"
               />
+            </CardContent>
+          </Card>
+
+          {/* 悬停翻译快捷键 */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">悬停翻译快捷键</CardTitle>
+              <CardDescription>
+                按住此键并将鼠标悬停在段落上即可翻译
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Select
+                value={translateShortcut}
+                onChange={(e) => {
+                  onUpdateTranslateShortcut?.(e.target.value);
+                }}
+                options={[
+                  { value: 'Control', label: 'Ctrl' },
+                  { value: 'Alt', label: 'Alt' },
+                  { value: 'Shift', label: 'Shift' },
+                  { value: 'Meta', label: 'Cmd (Mac)' },
+                ]}
+              />
+              <p className="text-xs text-muted-foreground mt-2">
+                💡 如果有选中文本，将优先翻译选中内容
+              </p>
             </CardContent>
           </Card>
         </div>

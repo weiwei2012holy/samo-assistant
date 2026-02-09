@@ -40,6 +40,8 @@ export interface AppSettings {
   theme: 'light' | 'dark' | 'system';
   /** 是否启用思考模式（用于 DeepSeek Reasoner 等模型） */
   enableReasoning: boolean;
+  /** 悬停翻译快捷键（默认 Control） */
+  translateShortcut?: string;
 }
 
 /**

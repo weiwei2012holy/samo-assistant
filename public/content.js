@@ -269,4 +269,382 @@ function extractBodyContent() {
   return cleanText(bodyClone.innerText);
 }
 
+// ==================== 悬停翻译功能 ====================
+
+// 翻译状态
+let translateModeActive = false;
+let currentHoverElement = null;
+let translatingElement = null;
+let translateShortcut = 'Control';
+let providerConfig = null;
+const translatedTexts = new Map(); // 缓存已翻译的文本
+
+// 加载翻译配置
+function loadTranslateConfig() {
+  chrome.storage.sync.get('ai_sidebar_settings', (result) => {
+    const settings = result.ai_sidebar_settings || {};
+    translateShortcut = settings.translateShortcut || 'Control';
+
+    // 获取当前供应商配置
+    const currentProvider = settings.currentProvider || 'openai';
+    providerConfig = settings.providerConfigs?.[currentProvider];
+
+    console.log('翻译配置已加载:', { translateShortcut, provider: currentProvider });
+  });
+}
+
+// 监听配置变化
+chrome.storage.onChanged.addListener((changes) => {
+  if (changes.ai_sidebar_settings) {
+    loadTranslateConfig();
+  }
+});
+
+// 初始化加载配置
+loadTranslateConfig();
+
+// 获取翻译目标（选中文本优先，否则悬停段落）
+function getTranslateTarget() {
+  // 优先：选中文本
+  const selection = window.getSelection();
+  if (selection && selection.toString().trim().length > 0) {
+    const text = selection.toString().trim();
+    if (text.length > 0) {
+      try {
+        const range = selection.getRangeAt(0);
+        return {
+          type: 'selection',
+          text: text,
+          anchor: range.cloneRange(),
+          element: range.commonAncestorContainer.parentElement
+        };
+      } catch (e) {
+        // 忽略获取 range 的错误
+      }
+    }
+  }
+
+  // 其次：悬停的文本段落
+  if (!currentHoverElement) return null;
+
+  // 查找最合适的段落容器
+  const bestParagraph = findBestParagraph(currentHoverElement);
+  if (bestParagraph) {
+    const text = bestParagraph.innerText?.trim();
+    if (text && text.length > 0 && text.length < 5000) {
+      return {
+        type: 'element',
+        text: text,
+        element: bestParagraph
+      };
+    }
+  }
+
+  return null;
+}
+
+/**
+ * 查找最合适的段落容器
+ * 策略：从当前元素向上查找，优先选择块级段落元素，避免选中内联元素
+ * @param {HTMLElement} startElement - 起始元素
+ * @returns {HTMLElement|null} - 最合适的段落元素
+ */
+function findBestParagraph(startElement) {
+  // 块级段落元素（优先级高）
+  const blockParagraphs = ['P', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6',
+                           'LI', 'BLOCKQUOTE', 'ARTICLE', 'SECTION'];
+  // 可能的段落容器（需要进一步判断）
+  const containerElements = ['DIV', 'TD', 'TH', 'DD', 'FIGCAPTION'];
+  // 内联元素（应该向上查找其容器）
+  const inlineElements = ['SPAN', 'A', 'STRONG', 'EM', 'B', 'I', 'CODE',
+                          'MARK', 'SMALL', 'SUB', 'SUP', 'LABEL'];
+
+  let el = startElement;
+  let bestCandidate = null;
+  let candidateText = '';
+
+  while (el && el !== document.body) {
+    // 跳过我们自己的翻译元素
+    if (el.classList?.contains('ai-sidebar-translation')) {
+      return null;
+    }
+
+    const tagName = el.tagName;
+
+    // 如果是明确的块级段落元素，直接返回
+    if (blockParagraphs.includes(tagName)) {
+      return el;
+    }
+
+    // 如果是内联元素，继续向上查找
+    if (inlineElements.includes(tagName)) {
+      el = el.parentElement;
+      continue;
+    }
+
+    // 如果是容器元素（如 DIV），判断是否是"叶子段落"
+    if (containerElements.includes(tagName)) {
+      const text = el.innerText?.trim() || '';
+
+      // 检查是否是合适的段落容器：
+      // 1. 有实际文本内容
+      // 2. 不是太大的容器（文本长度限制）
+      // 3. 是"叶子"段落：没有太多嵌套的块级子元素
+      if (text.length > 0 && text.length < 5000) {
+        const hasBlockChildren = hasSignificantBlockChildren(el);
+
+        if (!hasBlockChildren) {
+          // 这是一个叶子段落，很可能是我们要找的
+          return el;
+        } else {
+          // 有块级子元素，保存为候选，继续向上查找
+          // 但如果当前元素文本和之前候选差不多，保留当前更大的容器
+          if (!bestCandidate || text.length > candidateText.length * 1.5) {
+            bestCandidate = el;
+            candidateText = text;
+          }
+        }
+      }
+    }
+
+    el = el.parentElement;
+  }
+
+  return bestCandidate;
+}
+
+/**
+ * 检查元素是否有显著的块级子元素
+ * @param {HTMLElement} element
+ * @returns {boolean}
+ */
+function hasSignificantBlockChildren(element) {
+  const blockTags = ['P', 'DIV', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6',
+                     'UL', 'OL', 'LI', 'BLOCKQUOTE', 'ARTICLE', 'SECTION',
+                     'TABLE', 'FORM', 'HEADER', 'FOOTER', 'NAV', 'ASIDE'];
+
+  // 检查直接子元素中是否有多个块级元素
+  let blockCount = 0;
+  for (const child of element.children) {
+    if (blockTags.includes(child.tagName)) {
+      blockCount++;
+      // 如果有超过1个块级子元素，认为这是一个大容器而不是段落
+      if (blockCount > 1) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
+// 流式调用翻译 API
+async function translateWithStream(text, onChunk) {
+  if (!providerConfig?.apiKey) {
+    throw new Error('未配置 API 密钥');
+  }
+
+  const baseUrl = providerConfig.baseUrl || 'https://api.openai.com/v1';
+  const model = providerConfig.model || 'gpt-4o-mini';
+
+  const response = await fetch(`${baseUrl}/chat/completions`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${providerConfig.apiKey}`
+    },
+    body: JSON.stringify({
+      model: model,
+      messages: [
+        {
+          role: 'system',
+          content: '你是一个翻译助手。将用户输入翻译成中文，如果已是中文则翻译成英文。只返回翻译结果，不要添加任何解释或前缀。'
+        },
+        { role: 'user', content: text }
+      ],
+      stream: true
+    })
+  });
+
+  if (!response.ok) {
+    throw new Error(`API 请求失败: ${response.status}`);
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let fullContent = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    const chunk = decoder.decode(value);
+    const lines = chunk.split('\n').filter(line => line.trim().startsWith('data:'));
+
+    for (const line of lines) {
+      const data = line.replace(/^data:\s*/, '');
+      if (data === '[DONE]') continue;
+
+      try {
+        const parsed = JSON.parse(data);
+        const content = parsed.choices?.[0]?.delta?.content || '';
+        if (content) {
+          fullContent += content;
+          onChunk(fullContent);
+        }
+      } catch (e) {
+        // 忽略解析错误
+      }
+    }
+  }
+
+  return fullContent;
+}
+
+// 显示翻译结果
+function showTranslation(target, isLoading = false) {
+  // 移除同一元素的旧翻译
+  const existingTranslation = target.element?.nextElementSibling;
+  if (existingTranslation?.classList?.contains('ai-sidebar-translation')) {
+    existingTranslation.remove();
+  }
+
+  // 创建翻译结果容器（简洁版，无标题）
+  const container = document.createElement('div');
+  container.className = 'ai-sidebar-translation';
+  if (isLoading) {
+    container.classList.add('ai-sidebar-translation-loading');
+  }
+
+  container.innerHTML = `
+    <button class="ai-sidebar-translation-close" title="关闭">×</button>
+    <div class="ai-sidebar-translation-content">${isLoading ? '翻译中...' : ''}</div>
+  `;
+
+  // 插入到目标元素下方
+  if (target.element) {
+    target.element.insertAdjacentElement('afterend', container);
+  }
+
+  // 关闭按钮事件
+  container.querySelector('.ai-sidebar-translation-close')
+    .addEventListener('click', (e) => {
+      e.stopPropagation();
+      container.remove();
+    });
+
+  return container;
+}
+
+// 更新翻译内容
+function updateTranslationContent(container, content) {
+  const contentEl = container.querySelector('.ai-sidebar-translation-content');
+  if (contentEl) {
+    contentEl.textContent = content;
+  }
+  container.classList.remove('ai-sidebar-translation-loading');
+}
+
+// 检查并执行翻译
+async function checkAndTranslate() {
+  if (!translateModeActive) return;
+
+  const target = getTranslateTarget();
+  if (!target) return;
+
+  // 避免重复翻译同一元素
+  if (translatingElement === target.element) return;
+
+  // 检查缓存
+  if (translatedTexts.has(target.text)) {
+    const cachedTranslation = translatedTexts.get(target.text);
+    const container = showTranslation(target);
+    updateTranslationContent(container, cachedTranslation);
+    return;
+  }
+
+  // 检查是否已经有翻译结果
+  const existingTranslation = target.element?.nextElementSibling;
+  if (existingTranslation?.classList?.contains('ai-sidebar-translation')) {
+    return;
+  }
+
+  translatingElement = target.element;
+
+  try {
+    // 显示加载状态
+    const container = showTranslation(target, true);
+
+    // 流式翻译
+    const translation = await translateWithStream(target.text, (content) => {
+      updateTranslationContent(container, content);
+    });
+
+    // 缓存结果
+    translatedTexts.set(target.text, translation);
+  } catch (error) {
+    console.error('翻译失败:', error);
+    // 显示错误
+    const existingContainer = target.element?.nextElementSibling;
+    if (existingContainer?.classList?.contains('ai-sidebar-translation')) {
+      updateTranslationContent(existingContainer, `翻译失败: ${error.message}`);
+    }
+  } finally {
+    translatingElement = null;
+  }
+}
+
+// 检查快捷键是否按下
+function isShortcutPressed(e) {
+  switch (translateShortcut) {
+    case 'Control':
+      return e.ctrlKey;
+    case 'Alt':
+      return e.altKey;
+    case 'Shift':
+      return e.shiftKey;
+    case 'Meta':
+      return e.metaKey;
+    default:
+      return e.ctrlKey;
+  }
+}
+
+// 快捷键监听
+document.addEventListener('keydown', (e) => {
+  if (isShortcutPressed(e) && !translateModeActive) {
+    translateModeActive = true;
+    document.body.classList.add('ai-sidebar-translate-mode');
+    console.log('翻译模式已激活');
+    checkAndTranslate();
+  }
+}, true);  // 使用捕获阶段
+
+document.addEventListener('keyup', (e) => {
+  // 检查是否松开了快捷键
+  const wasShortcutKey = (
+    (translateShortcut === 'Control' && e.key === 'Control') ||
+    (translateShortcut === 'Alt' && e.key === 'Alt') ||
+    (translateShortcut === 'Shift' && e.key === 'Shift') ||
+    (translateShortcut === 'Meta' && (e.key === 'Meta' || e.key === 'OS'))
+  );
+
+  if (wasShortcutKey && translateModeActive) {
+    translateModeActive = false;
+    document.body.classList.remove('ai-sidebar-translate-mode');
+    console.log('翻译模式已关闭');
+  }
+}, true);  // 使用捕获阶段
+
+// 鼠标悬停检测
+document.addEventListener('mousemove', (e) => {
+  const element = document.elementFromPoint(e.clientX, e.clientY);
+  if (element !== currentHoverElement) {
+    currentHoverElement = element;
+    if (translateModeActive) {
+      checkAndTranslate();
+    }
+  }
+});
+
 console.log('Samo 助手 Content Script 已加载');
