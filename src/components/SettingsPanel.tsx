@@ -35,6 +35,12 @@ const PROVIDER_OPTIONS: ProviderOption[] = [
     defaultBaseUrl: 'https://api.deepseek.com/v1',
   },
   {
+    value: 'zhipu',
+    label: '智谱 AI (免费)',
+    models: ['glm-4.7-flash', 'glm-4.6v-flash', 'glm-4.1v-thinking-flash', 'glm-4-flash-250414', 'glm-4v-flash'],
+    defaultBaseUrl: 'https://open.bigmodel.cn/api/paas/v4',
+  },
+  {
     value: 'openrouter',
     label: 'OpenRouter (免费模型)',
     models: [], // 将动态加载

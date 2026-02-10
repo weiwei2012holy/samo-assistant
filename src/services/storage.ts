@@ -31,6 +31,12 @@ const DEFAULT_PROVIDER_CONFIGS: Record<ModelProvider, ProviderConfig> = {
     baseUrl: 'https://api.deepseek.com/v1',
     model: 'deepseek-chat',
   },
+  zhipu: {
+    provider: 'zhipu',
+    apiKey: '',
+    baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
+    model: 'glm-4.7-flash',
+  },
   openrouter: {
     provider: 'openrouter',
     apiKey: '',
