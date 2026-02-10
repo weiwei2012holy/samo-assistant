@@ -131,6 +131,7 @@ ai-sidebar/
 | OpenAI | gpt-4o, gpt-4o-mini, gpt-4-turbo, gpt-3.5-turbo |
 | Anthropic | claude-sonnet-4-5-20250929, claude-3-5-sonnet, claude-3-5-haiku |
 | DeepSeek | deepseek-chat, deepseek-reasoner |
+| 智谱 AI | glm-4.7-flash, glm-4.6v-flash, glm-4.1v-thinking-flash 等免费模型 |
 | OpenRouter | 自动获取免费模型列表 |
 | 自定义 | 任何 OpenAI 兼容的 API |
 

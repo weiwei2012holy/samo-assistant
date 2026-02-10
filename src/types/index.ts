@@ -7,7 +7,7 @@
 /**
  * 支持的大模型供应商
  */
-export type ModelProvider = 'openai' | 'anthropic' | 'deepseek' | 'openrouter' | 'custom';
+export type ModelProvider = 'openai' | 'anthropic' | 'deepseek' | 'zhipu' | 'openrouter' | 'custom';
 
 /**
  * 模型供应商配置

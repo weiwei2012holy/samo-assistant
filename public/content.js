@@ -325,11 +325,18 @@ function getTranslateTarget() {
     if (text.length > 0) {
       try {
         const range = selection.getRangeAt(0);
+        const element = range.commonAncestorContainer.parentElement;
+
+        // 检查选中的文本是否在翻译结果内部（防止套娃）
+        if (isInsideTranslation(element)) {
+          return null;
+        }
+
         return {
           type: 'selection',
           text: text,
           anchor: range.cloneRange(),
-          element: range.commonAncestorContainer.parentElement
+          element: element
         };
       } catch (e) {
         // 忽略获取 range 的错误
@@ -363,6 +370,11 @@ function getTranslateTarget() {
  * @returns {HTMLElement|null} - 最合适的段落元素
  */
 function findBestParagraph(startElement) {
+  // 首先检查起始元素是否在翻译结果内部（防止套娃）
+  if (isInsideTranslation(startElement)) {
+    return null;
+  }
+
   // 块级段落元素（优先级高）
   const blockParagraphs = ['P', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6',
                            'LI', 'BLOCKQUOTE', 'ARTICLE', 'SECTION'];
@@ -375,7 +387,7 @@ function findBestParagraph(startElement) {
   let el = startElement;
 
   while (el && el !== document.body) {
-    // 跳过我们自己的翻译元素
+    // 跳过翻译元素
     if (el.classList?.contains('ai-sidebar-translation')) {
       return null;
     }
@@ -421,6 +433,22 @@ function findBestParagraph(startElement) {
 }
 
 /**
+ * 检查元素是否在翻译结果内部
+ * @param {HTMLElement} element - 要检查的元素
+ * @returns {boolean} - 是否在翻译结果内部
+ */
+function isInsideTranslation(element) {
+  let el = element;
+  while (el && el !== document.body) {
+    if (el.classList?.contains('ai-sidebar-translation')) {
+      return true;
+    }
+    el = el.parentElement;
+  }
+  return false;
+}
+
+/**
  * 检查元素是否有显著的块级子元素
  * @param {HTMLElement} element
  * @returns {boolean}
@@ -454,12 +482,26 @@ async function translateWithStream(text, onChunk) {
   const baseUrl = providerConfig.baseUrl || 'https://api.openai.com/v1';
   const model = providerConfig.model || 'gpt-4o-mini';
 
+  // 检测是否是 OpenRouter
+  const isOpenRouter = baseUrl.includes('openrouter.ai');
+
+  // 构建请求头
+  const headers = {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${providerConfig.apiKey}`
+  };
+
+  // OpenRouter 需要额外的请求头
+  if (isOpenRouter) {
+    headers['HTTP-Referer'] = chrome.runtime.getURL('/');
+    headers['X-Title'] = 'Samo Assistant';
+  }
+
+  console.log('翻译请求:', { baseUrl, model, isOpenRouter });
+
   const response = await fetch(`${baseUrl}/chat/completions`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${providerConfig.apiKey}`
-    },
+    headers: headers,
     body: JSON.stringify({
       model: model,
       messages: [
@@ -474,7 +516,16 @@ async function translateWithStream(text, onChunk) {
   });
 
   if (!response.ok) {
-    throw new Error(`API 请求失败: ${response.status}`);
+    // 尝试读取详细错误信息
+    let errorDetail = '';
+    try {
+      const errorBody = await response.text();
+      const errorJson = JSON.parse(errorBody);
+      errorDetail = errorJson.error?.message || errorJson.message || errorBody;
+    } catch (e) {
+      errorDetail = response.statusText;
+    }
+    throw new Error(`模型: ${model}\n状态: ${response.status}\n错误: ${errorDetail}`);
   }
 
   const reader = response.body.getReader();
