@@ -373,8 +373,6 @@ function findBestParagraph(startElement) {
                           'MARK', 'SMALL', 'SUB', 'SUP', 'LABEL'];
 
   let el = startElement;
-  let bestCandidate = null;
-  let candidateText = '';
 
   while (el && el !== document.body) {
     // 跳过我们自己的翻译元素
@@ -395,35 +393,31 @@ function findBestParagraph(startElement) {
       continue;
     }
 
-    // 如果是容器元素（如 DIV），判断是否是"叶子段落"
+    // 如果是容器元素（如 DIV），判断是否是合适的段落
     if (containerElements.includes(tagName)) {
       const text = el.innerText?.trim() || '';
 
-      // 检查是否是合适的段落容器：
-      // 1. 有实际文本内容
-      // 2. 不是太大的容器（文本长度限制）
-      // 3. 是"叶子"段落：没有太多嵌套的块级子元素
+      // 检查是否是合适的段落容器
       if (text.length > 0 && text.length < 5000) {
-        const hasBlockChildren = hasSignificantBlockChildren(el);
-
-        if (!hasBlockChildren) {
-          // 这是一个叶子段落，很可能是我们要找的
+        // 关键改进：如果文本长度适中（< 500 字符），认为是一个"行"或"段落"
+        // 即使有一些小的块级子元素，也优先选择它
+        if (text.length < 500) {
           return el;
-        } else {
-          // 有块级子元素，保存为候选，继续向上查找
-          // 但如果当前元素文本和之前候选差不多，保留当前更大的容器
-          if (!bestCandidate || text.length > candidateText.length * 1.5) {
-            bestCandidate = el;
-            candidateText = text;
-          }
         }
+
+        // 对于较长的文本，检查是否是"叶子"段落
+        const hasBlockChildren = hasSignificantBlockChildren(el);
+        if (!hasBlockChildren) {
+          return el;
+        }
+        // 如果有显著的块级子元素，继续向上查找更好的容器
       }
     }
 
     el = el.parentElement;
   }
 
-  return bestCandidate;
+  return null;
 }
 
 /**
@@ -516,8 +510,11 @@ async function translateWithStream(text, onChunk) {
 
 // 显示翻译结果
 function showTranslation(target, isLoading = false) {
+  // 找到合适的插入位置（块级元素）
+  const insertTarget = findBlockParent(target.element);
+
   // 移除同一元素的旧翻译
-  const existingTranslation = target.element?.nextElementSibling;
+  const existingTranslation = insertTarget?.nextElementSibling;
   if (existingTranslation?.classList?.contains('ai-sidebar-translation')) {
     existingTranslation.remove();
   }
@@ -534,9 +531,9 @@ function showTranslation(target, isLoading = false) {
     <div class="ai-sidebar-translation-content">${isLoading ? '翻译中...' : ''}</div>
   `;
 
-  // 插入到目标元素下方
-  if (target.element) {
-    target.element.insertAdjacentElement('afterend', container);
+  // 插入到块级元素下方
+  if (insertTarget) {
+    insertTarget.insertAdjacentElement('afterend', container);
   }
 
   // 关闭按钮事件
@@ -547,6 +544,33 @@ function showTranslation(target, isLoading = false) {
     });
 
   return container;
+}
+
+/**
+ * 查找合适的块级父元素用于插入翻译结果
+ * @param {HTMLElement} element - 目标元素
+ * @returns {HTMLElement} - 块级父元素
+ */
+function findBlockParent(element) {
+  if (!element) return null;
+
+  // 内联元素列表
+  const inlineElements = ['A', 'SPAN', 'STRONG', 'EM', 'B', 'I', 'CODE',
+                          'MARK', 'SMALL', 'SUB', 'SUP', 'LABEL', 'ABBR',
+                          'CITE', 'DFN', 'KBD', 'SAMP', 'VAR', 'TIME'];
+
+  let el = element;
+
+  // 如果当前元素是内联元素，向上查找块级父元素
+  while (el && el !== document.body) {
+    if (!inlineElements.includes(el.tagName)) {
+      return el;
+    }
+    el = el.parentElement;
+  }
+
+  // 如果找不到合适的块级元素，返回原始元素
+  return element;
 }
 
 // 更新翻译内容
