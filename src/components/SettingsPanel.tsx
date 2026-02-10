@@ -8,6 +8,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
+import { Combobox } from '@/components/ui/combobox';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { ProviderConfig, ProviderOption, ModelProvider, OpenRouterModel } from '@/types';
@@ -85,7 +86,6 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
   const [apiKey, setApiKey] = useState(config.apiKey);
   const [baseUrl, setBaseUrl] = useState(config.baseUrl || '');
   const [model, setModel] = useState(config.model);
-  const [customModel, setCustomModel] = useState('');
 
   // UI 状态
   const [showApiKey, setShowApiKey] = useState(false);
@@ -140,9 +140,6 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
       setApiKey(savedConfig.apiKey);
       setBaseUrl(savedConfig.baseUrl || currentProviderOption?.defaultBaseUrl || '');
       setModel(savedConfig.model);
-      if (provider === 'custom') {
-        setCustomModel(savedConfig.model);
-      }
     } else {
       // 如果没有 getProviderConfig，使用默认值
       setBaseUrl(currentProviderOption?.defaultBaseUrl || '');
@@ -180,7 +177,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
         provider,
         apiKey,
         baseUrl: baseUrl || undefined,
-        model: provider === 'custom' && customModel ? customModel : model,
+        model,
       });
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
@@ -273,7 +270,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                   <CardDescription>
                     {provider === 'openrouter'
                       ? `选择免费模型 (${openRouterModels.length} 个可用)`
-                      : '选择要使用的模型'}
+                      : '选择或输入模型名称'}
                   </CardDescription>
                 </div>
                 {provider === 'openrouter' && (
@@ -294,22 +291,17 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
               </div>
             </CardHeader>
             <CardContent>
-              {provider === 'custom' ? (
-                <Input
-                  value={customModel}
-                  onChange={(e) => setCustomModel(e.target.value)}
-                  placeholder="输入模型名称，如 gpt-4"
-                />
-              ) : loadingModels ? (
+              {loadingModels ? (
                 <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
                   <Loader2 className="h-4 w-4 animate-spin" />
                   正在加载模型列表...
                 </div>
               ) : (
-                <Select
+                <Combobox
                   value={model}
-                  onChange={(e) => setModel(e.target.value)}
+                  onChange={setModel}
                   options={getAvailableModels()}
+                  placeholder="选择或输入模型名称"
                 />
               )}
             </CardContent>
