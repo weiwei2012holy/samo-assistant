@@ -687,8 +687,19 @@ async function checkAndTranslate() {
   }
 }
 
-// 检查快捷键是否按下
-function isShortcutPressed(e) {
+// 检查是否只按下了单个修饰键（没有其他键同时按下）
+function isOnlyShortcutKey(e) {
+  // 统计按下的修饰键数量
+  const modifierCount = (e.ctrlKey ? 1 : 0) + (e.altKey ? 1 : 0) + (e.shiftKey ? 1 : 0) + (e.metaKey ? 1 : 0);
+  // 必须只有一个修饰键，且不能有其他普通按键同时按下
+  // e.key 为修饰键本身时才是单独按下
+  const isModifierKey = ['Control', 'Alt', 'Shift', 'Meta', 'OS'].includes(e.key);
+  
+  if (modifierCount !== 1 || !isModifierKey) {
+    return false;
+  }
+  
+  // 检查是否是配置的快捷键
   switch (translateShortcut) {
     case 'Control':
       return e.ctrlKey;
@@ -703,37 +714,78 @@ function isShortcutPressed(e) {
   }
 }
 
+// 快捷键延迟触发相关变量
+let shortcutPressTimer = null;
+const SHORTCUT_DELAY = 150;  // 按住快捷键 150ms 后才触发翻译
+
+// 激活翻译模式
+function activateTranslateMode() {
+  if (translateModeActive) return;
+    translateModeActive = true;
+  document.body.classList.add('ai-sidebar-translate-mode');
+    console.log('翻译模式已激活');
+  ensureCurrentElement();
+    // 如果仍然没有获取到元素（用户还没有移动过鼠标）
+  // 添加一次性监听器，等待鼠标移动后自动翻译
+  if (!currentHoverElement) {
+    const onFirstInteraction = (ev) => {
+      if (!translateModeActive) {
+        document.removeEventListener('pointermove', onFirstInteraction, true);
+        return;
+      }
+      updateMousePosition(ev);
+      if (currentHoverElement) {
+        checkAndTranslate();
+        document.removeEventListener('pointermove', onFirstInteraction, true);
+      }
+    };
+    document.addEventListener('pointermove', onFirstInteraction, { capture: true, passive: true });
+    console.log('等待鼠标移动以确定翻译目标...');
+  } else {
+    checkAndTranslate();
+  }
+}
+
+// 取消翻译模式
+function deactivateTranslateMode() {
+  // 清除延迟定时器
+  if (shortcutPressTimer) {
+    clearTimeout(shortcutPressTimer);
+    shortcutPressTimer = null;
+  }
+  
+  if (translateModeActive) {
+    translateModeActive = false;
+    document.body.classList.remove('ai-sidebar-translate-mode');
+    console.log('翻译模式已关闭');
+  }
+}
 // 快捷键监听
 document.addEventListener('keydown', (e) => {
-  if (isShortcutPressed(e) && !translateModeActive) {
-    translateModeActive = true;
-    document.body.classList.add('ai-sidebar-translate-mode');
-    console.log('翻译模式已激活');
-    
-    ensureCurrentElement();
-    
-    // 如果仍然没有获取到元素（用户还没有移动过鼠标）
-    // 添加一次性监听器，等待鼠标移动后自动翻译
-    if (!currentHoverElement) {
-      const onFirstInteraction = (ev) => {
-        if (!translateModeActive) {
-          document.removeEventListener('pointermove', onFirstInteraction, true);
-          return;
-        }
-        updateMousePosition(ev);
-        if (currentHoverElement) {
-          checkAndTranslate();
-          document.removeEventListener('pointermove', onFirstInteraction, true);
-        }
-      };
-      document.addEventListener('pointermove', onFirstInteraction, { capture: true, passive: true });
-      console.log('等待鼠标移动以确定翻译目标...');
-    } else {
-      checkAndTranslate();
+  // 检查是否只按下了配置的快捷键（单个修饰键，无其他按键）
+  if (!isOnlyShortcutKey(e)) {
+    // 如果按下了其他键（如 Ctrl+A），取消正在等待的翻译激活
+    if (shortcutPressTimer) {
+      clearTimeout(shortcutPressTimer);
+      shortcutPressTimer = null;
+      console.log('检测到组合键，取消翻译触发');
     }
+    return;
   }
+  
+  // 如果已经在翻译模式或已有定时器，跳过
+  if (translateModeActive || shortcutPressTimer) {
+    return;
+  }
+  
+  // 延迟激活翻译模式，避免与其他快捷键冲突
+  shortcutPressTimer = setTimeout(() => {
+    shortcutPressTimer = null;
+    activateTranslateMode();
+  }, SHORTCUT_DELAY);
+  
+  console.log(`快捷键按下，${SHORTCUT_DELAY}ms 后激活翻译模式...`);
 }, true);  // 使用捕获阶段
-
 document.addEventListener('keyup', (e) => {
   // 检查是否松开了快捷键
   const wasShortcutKey = (
@@ -743,10 +795,8 @@ document.addEventListener('keyup', (e) => {
     (translateShortcut === 'Meta' && (e.key === 'Meta' || e.key === 'OS'))
   );
 
-  if (wasShortcutKey && translateModeActive) {
-    translateModeActive = false;
-    document.body.classList.remove('ai-sidebar-translate-mode');
-    console.log('翻译模式已关闭');
+  if (wasShortcutKey) {
+    deactivateTranslateMode();
   }
 }, true);  // 使用捕获阶段
 
