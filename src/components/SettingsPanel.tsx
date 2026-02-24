@@ -11,49 +11,10 @@ import { Select } from '@/components/ui/select';
 import { Combobox } from '@/components/ui/combobox';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { ProviderConfig, ProviderOption, ModelProvider, OpenRouterModel, QuickQuestion } from '@/types';
+import { ProviderConfig, ModelProvider, OpenRouterModel, QuickQuestion } from '@/types';
+import { PROVIDER_DEFINITIONS } from '@/config/providers';
 import { aiService } from '@/services/ai';
 import { ArrowLeft, Eye, EyeOff, Save, Check, RefreshCw, Loader2, Plus, Trash2, Pencil, MessageSquare } from 'lucide-react';
-
-// 供应商选项配置
-const PROVIDER_OPTIONS: ProviderOption[] = [
-  {
-    value: 'openai',
-    label: 'OpenAI',
-    models: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-3.5-turbo'],
-    defaultBaseUrl: 'https://api.openai.com/v1',
-  },
-  {
-    value: 'anthropic',
-    label: 'Anthropic (Claude)',
-    models: ['claude-sonnet-4-5-20250929', 'claude-3-5-sonnet-20241022', 'claude-3-5-haiku-20241022'],
-    defaultBaseUrl: 'https://api.anthropic.com/v1',
-  },
-  {
-    value: 'deepseek',
-    label: 'DeepSeek',
-    models: ['deepseek-chat', 'deepseek-reasoner'],
-    defaultBaseUrl: 'https://api.deepseek.com/v1',
-  },
-  {
-    value: 'zhipu',
-    label: '智谱 AI (免费)',
-    models: ['glm-4.7-flash', 'glm-4.6v-flash', 'glm-4.1v-thinking-flash', 'glm-4-flash-250414', 'glm-4v-flash'],
-    defaultBaseUrl: 'https://open.bigmodel.cn/api/paas/v4',
-  },
-  {
-    value: 'openrouter',
-    label: 'OpenRouter (免费模型)',
-    models: [], // 将动态加载
-    defaultBaseUrl: 'https://openrouter.ai/api/v1',
-  },
-  {
-    value: 'custom',
-    label: '自定义 (OpenAI 兼容)',
-    models: [],
-    defaultBaseUrl: '',
-  },
-];
 
 interface SettingsPanelProps {
   /** 当前供应商配置 */
@@ -111,7 +72,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
   const [showAddForm, setShowAddForm] = useState(false);
 
   // 获取当前供应商选项
-  const currentProviderOption = PROVIDER_OPTIONS.find(p => p.value === provider);
+  const currentProviderOption = PROVIDER_DEFINITIONS.find(p => p.value === provider);
 
   // 获取 OpenRouter 免费模型
   const fetchOpenRouterModels = async (currentModel?: string) => {
@@ -149,11 +110,11 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
     if (getProviderConfig) {
       const savedConfig = getProviderConfig(provider);
       setApiKey(savedConfig.apiKey);
-      setBaseUrl(savedConfig.baseUrl || currentProviderOption?.defaultBaseUrl || '');
+      setBaseUrl(savedConfig.baseUrl || currentProviderOption?.baseUrl || '');
       setModel(savedConfig.model);
     } else {
       // 如果没有 getProviderConfig，使用默认值
-      setBaseUrl(currentProviderOption?.defaultBaseUrl || '');
+      setBaseUrl(currentProviderOption?.baseUrl || '');
       if (currentProviderOption?.models.length) {
         setModel(currentProviderOption.models[0]);
       }
@@ -261,7 +222,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                   const newProvider = e.target.value as ModelProvider;
                   setProvider(newProvider);
                 }}
-                options={PROVIDER_OPTIONS.map(p => ({
+                options={PROVIDER_DEFINITIONS.map(p => ({
                   value: p.value,
                   label: isProviderConfigured(p.value) ? `${p.label} ✓` : p.label,
                 }))}
