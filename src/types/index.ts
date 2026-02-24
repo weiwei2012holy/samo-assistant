@@ -42,6 +42,8 @@ export interface AppSettings {
   enableReasoning: boolean;
   /** 悬停翻译快捷键（默认 Control） */
   translateShortcut?: string;
+  /** 常用问题/提示词列表 */
+  quickQuestions?: QuickQuestion[];
 }
 
 /**
@@ -135,4 +137,16 @@ export interface OpenRouterModel {
   isFree: boolean;
   /** 上下文长度 */
   contextLength?: number;
+}
+
+/**
+ * 常用问题/提示词
+ */
+export interface QuickQuestion {
+  /** 唯一标识符 */
+  id: string;
+  /** 显示名称（简短，用于按钮展示） */
+  label: string;
+  /** 完整的提示词模板，使用 {{text}} 作为选中文本的占位符 */
+  prompt: string;
 }

@@ -12,7 +12,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { useSettings } from '@/hooks/useSettings';
 import { usePageContent } from '@/hooks/usePageContent';
 import { useChat } from '@/hooks/useChat';
-import { ChatMessage } from '@/types';
+import { ChatMessage, QuickQuestion } from '@/types';
 import { cn } from '@/lib/utils';
 import {
   Settings,
@@ -27,6 +27,7 @@ import {
   Trash2,
   ExternalLink,
   Brain,
+  X,
 } from 'lucide-react';
 import { SettingsPanel } from '@/components/SettingsPanel';
 import { Markdown } from '@/components/Markdown';
@@ -43,6 +44,8 @@ export const App: React.FC = () => {
   const [input, setInput] = useState('');
   const [currentTabId, setCurrentTabId] = useState<number | null>(null);
   const [pendingTaskChecked, setPendingTaskChecked] = useState(false);
+  // 待提问的选中文本（用于「在侧边栏中提问」功能）
+  const [pendingAskText, setPendingAskText] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -60,6 +63,7 @@ export const App: React.FC = () => {
     getProviderConfig,
     updateEnableReasoning,
     updateTranslateShortcut,
+    updateQuickQuestions,
     isConfigValid,
   } = useSettings();
 
@@ -85,32 +89,36 @@ export const App: React.FC = () => {
 
   /**
    * 执行任务的统一入口 - 带排他锁
+   * @param task 任务对象，包含 type, prompt, text 等字段
    */
-  const executeTask = useCallback((task: { type: string; prompt: string }) => {
+  const executeTask = useCallback((task: { type: string; prompt: string; text?: string }) => {
+    // ask 类型特殊处理：预填输入框 + 显示常用问题，不直接发送
+    if (task.type === 'ask' && task.text) {
+      console.log('ask 任务：预填选中文本，等待用户选择问题', task.text);
+      setPendingAskText(task.text);
+      // 聚焦输入框
+      setTimeout(() => textareaRef.current?.focus(), 100);
+      return;
+    }
     // 排他检查：如果正在执行任务或正在加载，则跳过
     if (taskExecutingRef.current || chatLoading) {
       console.log('任务被跳过：已有任务正在执行', { taskExecuting: taskExecutingRef.current, chatLoading });
       return;
     }
-
     // 检查配置是否有效
     if (!isConfigValid()) {
       console.warn('API 配置无效，无法执行任务');
       return;
     }
-
     // 如果是总结页面任务且页面内容还没加载完成，保存任务等待
     if (task.type === 'summarize_page' && !pageContent?.content) {
       console.log('页面内容未加载，保存任务等待执行');
       pendingExecuteTaskRef.current = task;
       return;
     }
-
     // 设置执行锁
     taskExecutingRef.current = true;
     console.log('开始执行任务:', task.type);
-
-    // 执行任务
     if (task.type === 'summarize_page') {
       summarizePage(pageContent!.content);
     } else {
@@ -237,7 +245,16 @@ export const App: React.FC = () => {
         const task = await chrome.runtime.sendMessage({ type: 'GET_PENDING_TASK' });
         setPendingTaskChecked(true); // 标记已检查
 
-        if (!task || !task.prompt) {
+        // ask 类型不需要 prompt，只需要 text；其他类型需要 prompt
+        if (!task) {
+          return;
+        }
+        
+        // ask 类型需要 text，其他类型需要 prompt
+        if (task.type === 'ask' && !task.text) {
+          return;
+        }
+        if (task.type !== 'ask' && !task.prompt) {
           return;
         }
 
@@ -270,15 +287,31 @@ export const App: React.FC = () => {
   // 处理发送消息
   const handleSendMessage = useCallback((content: string) => {
     if (!content.trim() || chatLoading) return;
-    sendMessage(content, pageContent?.content);
+    // 如果有待提问文本，将用户输入的问题与选中文本组合
+    let finalPrompt = content;
+    if (pendingAskText) {
+      finalPrompt = `${content}\n\n${pendingAskText}`;
+      setPendingAskText(null);
+    }
+    sendMessage(finalPrompt, pageContent?.content);
     setInput('');
-  }, [sendMessage, pageContent, chatLoading]);
+  }, [sendMessage, pageContent, chatLoading, pendingAskText]);
 
   // 处理生成总结
   const handleSummarize = useCallback(async () => {
     if (!pageContent?.content || chatLoading) return;
     await summarizePage(pageContent.content);
   }, [pageContent, chatLoading, summarizePage]);
+
+  // 处理常用问题点击
+  const handleQuickQuestion = useCallback((question: QuickQuestion) => {
+    if (!pendingAskText || chatLoading) return;
+    // 将占位符 {{text}} 替换为选中文本
+    const prompt = question.prompt.replace('{{text}}', pendingAskText);
+    sendMessage(prompt, pageContent?.content);
+    setPendingAskText(null);
+    setInput('');
+  }, [pendingAskText, chatLoading, sendMessage, pageContent]);
 
   // 处理表单提交
   const handleSubmit = (e: React.FormEvent) => {
@@ -307,6 +340,8 @@ export const App: React.FC = () => {
         getProviderConfig={getProviderConfig}
         translateShortcut={settings.translateShortcut}
         onUpdateTranslateShortcut={updateTranslateShortcut}
+        quickQuestions={settings.quickQuestions}
+        onUpdateQuickQuestions={updateQuickQuestions}
       />
     );
   }
@@ -491,6 +526,44 @@ export const App: React.FC = () => {
 
       {/* 输入区域 */}
       <div className="p-3 border-t">
+        {/* 常用问题快捷卡片（当有待提问文本时显示） */}
+        {pendingAskText && configValid && (
+          <Card className="mb-3 bg-primary/5 border-primary/20">
+            <CardContent className="p-3">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-medium">选中的文本</span>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6"
+                  onClick={() => setPendingAskText(null)}
+                >
+                  <X className="h-3 w-3" />
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground line-clamp-2 mb-3">
+                {pendingAskText}
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {(settings.quickQuestions || []).map((q) => (
+                  <Button
+                    key={q.id}
+                    variant="outline"
+                    size="sm"
+                    className="text-xs h-7"
+                    onClick={() => handleQuickQuestion(q)}
+                    disabled={chatLoading}
+                  >
+                    {q.label}
+                  </Button>
+                ))}
+              </div>
+              <p className="text-xs text-muted-foreground mt-2">
+                💡 点击常用问题或在下方输入自定义问题
+              </p>
+            </CardContent>
+          </Card>
+        )}
         {/* 快捷操作 */}
         {messages.length > 0 && pageContent && configValid && (
           <div className="flex gap-2 mb-2">

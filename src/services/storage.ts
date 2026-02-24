@@ -4,7 +4,7 @@
  * @Description Chrome 存储服务，使用 chrome.storage.sync 同步用户配置
  **/
 
-import { AppSettings, ProviderConfig, ModelProvider } from '@/types';
+import { AppSettings, ProviderConfig, ModelProvider, QuickQuestion } from '@/types';
 
 // 存储键名常量
 const STORAGE_KEYS = {
@@ -52,12 +52,20 @@ const DEFAULT_PROVIDER_CONFIGS: Record<ModelProvider, ProviderConfig> = {
 };
 
 // 默认应用设置
-const DEFAULT_SETTINGS: AppSettings = {
+export const DEFAULT_SETTINGS: AppSettings = {
   currentProvider: 'openai',
   providerConfigs: {},
   theme: 'system',
   enableReasoning: false,
   translateShortcut: 'Control',
+  quickQuestions: [
+    { id: '1', label: '翻译', prompt: '请将以下内容翻译成中文（如果已是中文则翻译成英文）：\n\n{{text}}' },
+    { id: '2', label: '解释', prompt: '请解释以下内容的含义：\n\n{{text}}' },
+    { id: '3', label: '总结', prompt: '请用一句话总结以下内容的要点：\n\n{{text}}' },
+    { id: '4', label: '答案', prompt: '请给出以下内容的答案：\n\n{{text}}' },
+    { id: '5', label: '真伪', prompt: '请判断以下内容的真假：\n\n{{text}}' },
+    { id: '6', label: '回贴', prompt: '请为以下内容生成一个合适的回贴：\n\n{{text}}' },
+  ],
 };
 
 /**
@@ -221,6 +229,24 @@ class StorageService {
    */
   getDefaultProviderConfig(provider: ModelProvider): ProviderConfig {
     return { ...DEFAULT_PROVIDER_CONFIGS[provider] };
+  }
+  /**
+   * 更新常用问题列表
+   * @param questions - 常用问题列表
+   */
+  async updateQuickQuestions(questions: QuickQuestion[]): Promise<void> {
+    const settings = await this.getSettings();
+    settings.quickQuestions = questions;
+    await this.saveSettings(settings);
+  }
+
+  /**
+   * 获取常用问题列表
+   * @returns 常用问题列表
+   */
+  async getQuickQuestions(): Promise<QuickQuestion[]> {
+    const settings = await this.getSettings();
+    return settings.quickQuestions || DEFAULT_SETTINGS.quickQuestions || [];
   }
 }
 
