@@ -5,14 +5,7 @@
  **/
 
 import { ProviderConfig, APIResponse, ChatMessage, OpenRouterModel } from '@/types';
-
-// 供应商 API 基础 URL 映射
-const PROVIDER_BASE_URLS: Record<string, string> = {
-  openai: 'https://api.openai.com/v1',
-  anthropic: 'https://api.anthropic.com/v1',
-  deepseek: 'https://api.deepseek.com/v1',
-  openrouter: 'https://openrouter.ai/api/v1',
-};
+import { getProviderBaseUrl, getProviderAPIType } from '@/config/providers';
 
 /**
  * AI API 服务类
@@ -31,7 +24,7 @@ class AIService {
     onStream?: (chunk: string) => void,
     enableReasoning: boolean = false
   ): Promise<APIResponse> {
-    const baseUrl = config.baseUrl || PROVIDER_BASE_URLS[config.provider] || PROVIDER_BASE_URLS.openai;
+    const baseUrl = config.baseUrl || getProviderBaseUrl(config.provider);
     const url = `${baseUrl}/chat/completions`;
 
     const response = await fetch(url, {
@@ -138,7 +131,7 @@ class AIService {
     systemPrompt?: string,
     onStream?: (chunk: string) => void
   ): Promise<APIResponse> {
-    const baseUrl = config.baseUrl || PROVIDER_BASE_URLS.anthropic;
+    const baseUrl = config.baseUrl || getProviderBaseUrl('anthropic');
     const url = `${baseUrl}/messages`;
 
     // 转换消息格式，Anthropic 不支持 system 角色在 messages 中
@@ -231,10 +224,12 @@ class AIService {
     onStream?: (chunk: string) => void,
     enableReasoning: boolean = false
   ): Promise<APIResponse> {
+    // 根据供应商的 API 协议类型选择不同的调用方式
+    const apiType = getProviderAPIType(config.provider);
     // 构建消息列表
     const formattedMessages: { role: string; content: string }[] = [];
 
-    if (systemPrompt && config.provider !== 'anthropic') {
+    if (systemPrompt && apiType !== 'anthropic') {
       formattedMessages.push({ role: 'system', content: systemPrompt });
     }
 
@@ -246,7 +241,7 @@ class AIService {
     );
 
     // 根据供应商选择不同的 API 调用方式
-    if (config.provider === 'anthropic') {
+    if (apiType === 'anthropic') {
       return this.callAnthropic(config, formattedMessages, systemPrompt, onStream);
     }
 

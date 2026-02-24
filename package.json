@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build && npm run copy-files",
+    "build": "tsc -b && vite build && npm run copy-files && vite build --config vite.content.config.ts",
+    "dev:content": "vite build --config vite.content.config.ts --watch",
     "copy-files": "cp -r public/* dist/",
     "lint": "eslint .",
     "preview": "vite preview"

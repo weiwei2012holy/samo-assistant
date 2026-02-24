@@ -8,7 +8,8 @@
       "Bash(npm install:*)",
       "Bash(npm run build:*)",
       "Bash(node:*)",
-      "WebFetch(domain:docs.bigmodel.cn)"
+      "WebFetch(domain:docs.bigmodel.cn)",
+      "Bash(wc -l /Users/yidejia/Project/ai-sidebar/src/**/*.tsx /Users/yidejia/Project/ai-sidebar/src/**/*.ts /Users/yidejia/Project/ai-sidebar/public/*.js 2>/dev/null | tail -1)"
     ],
     "deny": [],
     "ask": []

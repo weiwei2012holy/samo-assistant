@@ -112,20 +112,6 @@ export interface APIResponse {
 }
 
 /**
- * 供应商选项
- */
-export interface ProviderOption {
-  /** 供应商标识 */
-  value: ModelProvider;
-  /** 显示名称 */
-  label: string;
-  /** 默认模型列表 */
-  models: string[];
-  /** 默认 API URL */
-  defaultBaseUrl: string;
-}
-
-/**
  * OpenRouter 模型信息
  */
 export interface OpenRouterModel {
