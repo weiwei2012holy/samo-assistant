@@ -11,9 +11,9 @@ import { Select } from '@/components/ui/select';
 import { Combobox } from '@/components/ui/combobox';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { ProviderConfig, ProviderOption, ModelProvider, OpenRouterModel } from '@/types';
+import { ProviderConfig, ProviderOption, ModelProvider, OpenRouterModel, QuickQuestion } from '@/types';
 import { aiService } from '@/services/ai';
-import { ArrowLeft, Eye, EyeOff, Save, Check, RefreshCw, Loader2 } from 'lucide-react';
+import { ArrowLeft, Eye, EyeOff, Save, Check, RefreshCw, Loader2, Plus, Trash2, Pencil, MessageSquare } from 'lucide-react';
 
 // 供应商选项配置
 const PROVIDER_OPTIONS: ProviderOption[] = [
@@ -68,6 +68,10 @@ interface SettingsPanelProps {
   translateShortcut?: string;
   /** 更新翻译快捷键回调 */
   onUpdateTranslateShortcut?: (shortcut: string) => Promise<void>;
+  /** 常用问题列表 */
+  quickQuestions?: QuickQuestion[];
+  /** 更新常用问题回调 */
+  onUpdateQuickQuestions?: (questions: QuickQuestion[]) => Promise<void>;
 }
 
 /**
@@ -80,6 +84,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
   getProviderConfig,
   translateShortcut = 'Control',
   onUpdateTranslateShortcut,
+  quickQuestions = [],
+  onUpdateQuickQuestions,
 }) => {
   // 表单状态
   const [provider, setProvider] = useState<ModelProvider>(config.provider);
@@ -98,6 +104,11 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
 
   // 标记是否是初始化加载
   const isInitialMount = useRef(true);
+  // 常用问题编辑状态
+  const [editingQuestion, setEditingQuestion] = useState<QuickQuestion | null>(null);
+  const [newQuestionLabel, setNewQuestionLabel] = useState('');
+  const [newQuestionPrompt, setNewQuestionPrompt] = useState('');
+  const [showAddForm, setShowAddForm] = useState(false);
 
   // 获取当前供应商选项
   const currentProviderOption = PROVIDER_OPTIONS.find(p => p.value === provider);
@@ -193,6 +204,35 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
     if (!getProviderConfig) return false;
     const config = getProviderConfig(p);
     return !!config.apiKey;
+  };
+
+  // 添加新的常用问题
+  const handleAddQuestion = async () => {
+    if (!newQuestionLabel.trim() || !newQuestionPrompt.trim() || !onUpdateQuickQuestions) return;
+    const newQuestion: QuickQuestion = {
+      id: Date.now().toString(),
+      label: newQuestionLabel.trim(),
+      prompt: newQuestionPrompt.trim(),
+    };
+    await onUpdateQuickQuestions([...quickQuestions, newQuestion]);
+    setNewQuestionLabel('');
+    setNewQuestionPrompt('');
+    setShowAddForm(false);
+  };
+
+  // 删除常用问题
+  const handleDeleteQuestion = async (id: string) => {
+    if (!onUpdateQuickQuestions) return;
+    await onUpdateQuickQuestions(quickQuestions.filter(q => q.id !== id));
+  };
+
+  // 保存编辑的常用问题
+  const handleSaveEdit = async () => {
+    if (!editingQuestion || !onUpdateQuickQuestions) return;
+    await onUpdateQuickQuestions(
+      quickQuestions.map(q => q.id === editingQuestion.id ? editingQuestion : q)
+    );
+    setEditingQuestion(null);
   };
 
   return (
@@ -349,6 +389,150 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
               />
               <p className="text-xs text-muted-foreground mt-2">
                 💡 如果有选中文本，将优先翻译选中内容
+              </p>
+            </CardContent>
+          </Card>
+          {/* 常用问题配置 */}
+          <Card>
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <MessageSquare className="h-4 w-4" />
+                    常用问题
+                  </CardTitle>
+                  <CardDescription>
+                    配置快捷提问，选中文本后可一键提问
+                  </CardDescription>
+                </div>
+                {!showAddForm && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setShowAddForm(true)}
+                    title="添加常用问题"
+                  >
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {/* 添加新问题表单 */}
+              {showAddForm && (
+                <div className="p-3 border rounded-lg space-y-2 bg-muted/30">
+                  <Input
+                    value={newQuestionLabel}
+                    onChange={(e) => setNewQuestionLabel(e.target.value)}
+                    placeholder="按钮名称（如：翻译、解释、总结）"
+                    className="h-8 text-sm"
+                  />
+                  <Input
+                    value={newQuestionPrompt}
+                    onChange={(e) => setNewQuestionPrompt(e.target.value)}
+                    placeholder="提示词模板，使用 {{text}} 代表选中文本"
+                    className="h-8 text-sm"
+                  />
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      onClick={handleAddQuestion}
+                      disabled={!newQuestionLabel.trim() || !newQuestionPrompt.trim()}
+                      className="h-7 text-xs"
+                    >
+                      添加
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setShowAddForm(false);
+                        setNewQuestionLabel('');
+                        setNewQuestionPrompt('');
+                      }}
+                      className="h-7 text-xs"
+                    >
+                      取消
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {/* 常用问题列表 */}
+              {quickQuestions.length === 0 && !showAddForm && (
+                <p className="text-sm text-muted-foreground text-center py-4">
+                  暂无常用问题，点击右上角 + 添加
+                </p>
+              )}
+
+              {quickQuestions.map((question) => (
+                <div
+                  key={question.id}
+                  className="flex items-start gap-2 p-2 border rounded-lg hover:bg-muted/50 transition-colors"
+                >
+                  {editingQuestion?.id === question.id ? (
+                    // 编辑模式
+                    <div className="flex-1 space-y-2">
+                      <Input
+                        value={editingQuestion.label}
+                        onChange={(e) => setEditingQuestion({...editingQuestion, label: e.target.value})}
+                        placeholder="按钮名称"
+                        className="h-7 text-sm"
+                      />
+                      <Input
+                        value={editingQuestion.prompt}
+                        onChange={(e) => setEditingQuestion({...editingQuestion, prompt: e.target.value})}
+                        placeholder="提示词模板"
+                        className="h-7 text-sm"
+                      />
+                      <div className="flex gap-1">
+                        <Button size="sm" onClick={handleSaveEdit} className="h-6 text-xs px-2">
+                          保存
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setEditingQuestion(null)}
+                          className="h-6 text-xs px-2"
+                        >
+                          取消
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    // 显示模式
+                    <>
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium text-sm">{question.label}</div>
+                        <div className="text-xs text-muted-foreground truncate" title={question.prompt}>
+                          {question.prompt}
+                        </div>
+                      </div>
+                      <div className="flex gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6"
+                          onClick={() => setEditingQuestion(question)}
+                        >
+                          <Pencil className="h-3 w-3" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6 text-destructive hover:text-destructive"
+                          onClick={() => handleDeleteQuestion(question.id)}
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              ))}
+
+              <p className="text-xs text-muted-foreground">
+                💡 在提示词中使用 <code className="bg-muted px-1 rounded">{'{{text}}'}</code> 代表选中的文本
               </p>
             </CardContent>
           </Card>

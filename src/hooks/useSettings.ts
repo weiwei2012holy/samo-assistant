@@ -5,17 +5,8 @@
  **/
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { AppSettings, ProviderConfig, ModelProvider } from '@/types';
-import { storageService } from '@/services/storage';
-
-// 默认设置
-const DEFAULT_SETTINGS: AppSettings = {
-  currentProvider: 'openai',
-  providerConfigs: {},
-  theme: 'system',
-  enableReasoning: false,
-  translateShortcut: 'Control',
-};
+import { AppSettings, ProviderConfig, ModelProvider, QuickQuestion } from '@/types';
+import { storageService, DEFAULT_SETTINGS } from '@/services/storage';
 
 /**
  * 设置管理 Hook
@@ -125,6 +116,11 @@ export function useSettings() {
     const newSettings = { ...settings, translateShortcut: shortcut };
     await saveSettings(newSettings);
   }, [settings, saveSettings]);
+  // 更新常用问题列表
+  const updateQuickQuestions = useCallback(async (questions: QuickQuestion[]) => {
+    const newSettings = { ...settings, quickQuestions: questions };
+    await saveSettings(newSettings);
+  }, [settings, saveSettings]);
 
   // 检查配置是否有效
   const isConfigValid = useCallback(() => {
@@ -142,6 +138,7 @@ export function useSettings() {
     updateTheme,
     updateEnableReasoning,
     updateTranslateShortcut,
+    updateQuickQuestions,
     isConfigValid,
   };
 }

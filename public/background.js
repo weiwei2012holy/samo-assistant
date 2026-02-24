@@ -182,8 +182,9 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
       prompt = `请总结以下内容的要点：\n\n${selectedText}`;
       break;
     case 'ai-ask':
+      // 「在侧边栏中提问」：不直接发送，只传递选中文本，让用户输入问题后再发送
       taskType = 'ask';
-      prompt = selectedText;
+      prompt = '';  // 不构造 prompt，由侧边栏让用户选择常用问题或手动输入
       break;
     default:
       return;
