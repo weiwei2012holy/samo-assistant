@@ -6,6 +6,7 @@
 
 import { ProviderConfig, APIResponse, ChatMessage, OpenRouterModel } from '@/types';
 import { getProviderBaseUrl, getProviderAPIType } from '@/config/providers';
+import { readSSEStream } from '@/utils/stream';
 
 /**
  * AI API 服务类
@@ -47,56 +48,37 @@ class AIService {
 
     // 流式响应处理
     if (onStream && response.body) {
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
       let fullContent = '';
       let fullReasoning = '';
       let reasoningEnded = false;
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
+      await readSSEStream(response.body, (parsed) => {
+        const delta = (parsed as { choices?: Array<{ delta?: { content?: string; reasoning_content?: string } }> })
+          .choices?.[0]?.delta;
 
-        const chunk = decoder.decode(value);
-        const lines = chunk.split('\n').filter(line => line.trim().startsWith('data:'));
-
-        for (const line of lines) {
-          const data = line.replace(/^data:\s*/, '');
-          if (data === '[DONE]') continue;
-
-          try {
-            const parsed = JSON.parse(data);
-            const delta = parsed.choices?.[0]?.delta;
-
-            // 处理 DeepSeek Reasoner 的思考内容（仅在启用思考模式时显示）
-            if (enableReasoning) {
-              const reasoningContent = delta?.reasoning_content || '';
-              if (reasoningContent) {
-                // 首次输出思考内容时，添加开始标记
-                if (!fullReasoning) {
-                  onStream('<think>\n');
-                }
-                fullReasoning += reasoningContent;
-                onStream(reasoningContent);
-              }
-            }
-
-            // 处理普通内容
-            const content = delta?.content || '';
-            if (content) {
-              // 思考结束，输出结束标记（仅在启用思考模式且有思考内容时）
-              if (enableReasoning && fullReasoning && !reasoningEnded) {
-                reasoningEnded = true;
-                onStream('\n</think>\n\n');
-              }
-              fullContent += content;
-              onStream(content);
-            }
-          } catch {
-            // 忽略解析错误
+        // 处理 DeepSeek Reasoner 的思考内容（仅在启用思考模式时显示）
+        if (enableReasoning) {
+          const reasoningContent = delta?.reasoning_content || '';
+          if (reasoningContent) {
+            // 首次输出思考内容时，添加开始标记
+            if (!fullReasoning) onStream('<think>\n');
+            fullReasoning += reasoningContent;
+            onStream(reasoningContent);
           }
         }
-      }
+
+        // 处理普通内容
+        const content = delta?.content || '';
+        if (content) {
+          // 思考结束，输出结束标记（仅在启用思考模式且有思考内容时）
+          if (enableReasoning && fullReasoning && !reasoningEnded) {
+            reasoningEnded = true;
+            onStream('\n</think>\n\n');
+          }
+          fullContent += content;
+          onStream(content);
+        }
+      });
 
       // 如果只有思考内容没有普通内容，也要关闭标签
       if (enableReasoning && fullReasoning && !reasoningEnded) {
@@ -165,34 +147,18 @@ class AIService {
 
     // 流式响应处理
     if (onStream && response.body) {
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
       let fullContent = '';
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        const chunk = decoder.decode(value);
-        const lines = chunk.split('\n').filter(line => line.trim().startsWith('data:'));
-
-        for (const line of lines) {
-          const data = line.replace(/^data:\s*/, '');
-
-          try {
-            const parsed = JSON.parse(data);
-            if (parsed.type === 'content_block_delta') {
-              const content = parsed.delta?.text || '';
-              if (content) {
-                fullContent += content;
-                onStream(content);
-              }
-            }
-          } catch {
-            // 忽略解析错误
+      await readSSEStream(response.body, (parsed) => {
+        const event = parsed as { type?: string; delta?: { text?: string } };
+        if (event.type === 'content_block_delta') {
+          const content = event.delta?.text || '';
+          if (content) {
+            fullContent += content;
+            onStream(content);
           }
         }
-      }
+      });
 
       return { content: fullContent };
     }

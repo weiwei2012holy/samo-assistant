@@ -10,6 +10,7 @@
 
 import type { ProviderConfig } from '@/types';
 import { getProviderBaseUrl } from '@/config/providers';
+import { readSSEStream } from '@/utils/stream';
 
 // ==================== 类型定义 ====================
 
@@ -554,33 +555,16 @@ async function translateWithStream(
     throw new Error(`模型: ${model}\n状态: ${response.status}\n错误: ${errorDetail}`);
   }
 
-  const reader = response.body!.getReader();
-  const decoder = new TextDecoder();
   let fullContent = '';
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-
-    const chunk = decoder.decode(value);
-    const lines = chunk.split('\n').filter(line => line.trim().startsWith('data:'));
-
-    for (const line of lines) {
-      const data = line.replace(/^data:\s*/, '');
-      if (data === '[DONE]') continue;
-
-      try {
-        const parsed = JSON.parse(data);
-        const content: string = parsed.choices?.[0]?.delta?.content || '';
-        if (content) {
-          fullContent += content;
-          onChunk(fullContent); // 回调传递累积内容，UI 实时更新
-        }
-      } catch {
-        // 忽略非 JSON 行（如心跳包）
-      }
+  await readSSEStream(response.body!, (parsed) => {
+    const content = (parsed as { choices?: Array<{ delta?: { content?: string } }> })
+      .choices?.[0]?.delta?.content || '';
+    if (content) {
+      fullContent += content;
+      onChunk(fullContent); // 回调传递累积内容，UI 实时更新
     }
-  }
+  });
 
   return fullContent;
 }

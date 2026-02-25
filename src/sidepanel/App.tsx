@@ -1,61 +1,64 @@
 /**
  * @Author wei
  * @Date 2026-02-07
- * @Description 侧边栏主应用组件 - 整合总结和对话功能
+ * @Description 侧边栏主应用组件 - 负责组装各子模块，业务逻辑下沉至 Hook / 组件
+ *
+ * 依赖关系：
+ *  useSettings → usePageContent → useChat(tabId) → usePendingTask → useTabManager
+ *
+ * 注意：currentTabId 状态保留在此组件，打破 useChat 与 useTabManager 之间的循环依赖。
+ *  - useTabManager 通过 onSetTabId 回调更新 currentTabId
+ *  - useChat 直接消费 currentTabId
  **/
 
-import React, { useState, useEffect, useCallback, useRef, memo } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/textarea';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { Card, CardContent } from '@/components/ui/card';
 import { useSettings } from '@/hooks/useSettings';
 import { usePageContent } from '@/hooks/usePageContent';
 import { useChat } from '@/hooks/useChat';
-import { ChatMessage, QuickQuestion } from '@/types';
+import { useTabManager } from '@/hooks/useTabManager';
+import { usePendingTask } from '@/hooks/usePendingTask';
+import { QuickQuestion } from '@/types';
 import { cn } from '@/lib/utils';
 import {
   Settings,
-  Send,
   Loader2,
-  User,
-  Bot,
   AlertCircle,
   Globe,
   RefreshCw,
-  Sparkles,
+  Brain,
   Trash2,
   ExternalLink,
-  Brain,
-  X,
 } from 'lucide-react';
 import { SettingsPanel } from '@/components/SettingsPanel';
-import { Markdown } from '@/components/Markdown';
 import { Tooltip } from '@/components/ui/tooltip';
+import { MessageList } from '@/components/MessageList';
+import { InputArea } from '@/components/InputArea';
 
 type View = 'main' | 'settings';
 
 /**
  * 主应用组件
+ *
+ * 仅负责：
+ *  1. 组合各 Hook 和组件
+ *  2. 头部 UI（思考模式、清空、设置按钮）
+ *  3. 配置提示横幅
+ *  4. 页面信息卡片
  */
 export const App: React.FC = () => {
-  // 视图状态
   const [view, setView] = useState<View>('main');
   const [input, setInput] = useState('');
+  // currentTabId 由 useTabManager 写入，由 useChat 读取
   const [currentTabId, setCurrentTabId] = useState<number | null>(null);
-  const [pendingTaskChecked, setPendingTaskChecked] = useState(false);
-  // 待提问的选中文本（用于「在侧边栏中提问」功能）
+  // 待提问的选中文本（来自右键"在侧边栏提问"）
   const [pendingAskText, setPendingAskText] = useState<string | null>(null);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // 任务执行锁 - 确保同一时间只有一个任务在执行
-  const taskExecutingRef = useRef(false);
-
-  // 待执行的任务（等待页面内容加载后执行）
-  const pendingExecuteTaskRef = useRef<{ type: string; prompt: string } | null>(null);
-
-  // 设置相关
+  // ── 设置 ──────────────────────────────────────────────────────────────────
   const {
     settings,
     loading: settingsLoading,
@@ -67,7 +70,7 @@ export const App: React.FC = () => {
     isConfigValid,
   } = useSettings();
 
-  // 页面内容相关
+  // ── 页面内容 ──────────────────────────────────────────────────────────────
   const {
     pageContent,
     loading: pageLoading,
@@ -76,7 +79,7 @@ export const App: React.FC = () => {
     clearPageContent,
   } = usePageContent();
 
-  // 聊天相关
+  // ── 聊天（依赖 currentTabId，每次切换 tab 自动恢复对应对话） ──────────────
   const {
     messages,
     isLoading: chatLoading,
@@ -87,189 +90,44 @@ export const App: React.FC = () => {
     clearMessages,
   } = useChat(settings.providerConfig, settings.enableReasoning, currentTabId);
 
-  /**
-   * 执行任务的统一入口 - 带排他锁
-   * @param task 任务对象，包含 type, prompt, text 等字段
-   */
-  const executeTask = useCallback((task: { type: string; prompt: string; text?: string }) => {
-    // ask 类型特殊处理：预填输入框 + 显示常用问题，不直接发送
-    if (task.type === 'ask' && task.text) {
-      console.log('ask 任务：预填选中文本，等待用户选择问题', task.text);
-      setPendingAskText(task.text);
-      // 聚焦输入框
-      setTimeout(() => textareaRef.current?.focus(), 100);
-      return;
-    }
-    // 排他检查：如果正在执行任务或正在加载，则跳过
-    if (taskExecutingRef.current || chatLoading) {
-      console.log('任务被跳过：已有任务正在执行', { taskExecuting: taskExecutingRef.current, chatLoading });
-      return;
-    }
-    // 检查配置是否有效
-    if (!isConfigValid()) {
-      console.warn('API 配置无效，无法执行任务');
-      return;
-    }
-    // 如果是总结页面任务且页面内容还没加载完成，保存任务等待
-    if (task.type === 'summarize_page' && !pageContent?.content) {
-      console.log('页面内容未加载，保存任务等待执行');
-      pendingExecuteTaskRef.current = task;
-      return;
-    }
-    // 设置执行锁
-    taskExecutingRef.current = true;
-    console.log('开始执行任务:', task.type);
-    if (task.type === 'summarize_page') {
-      summarizePage(pageContent!.content);
-    } else {
-      sendMessage(task.prompt, pageContent?.content);
-    }
-  }, [chatLoading, isConfigValid, pageContent, sendMessage, summarizePage]);
+  // ── 任务调度（排他锁 + 延迟执行 + 消息监听） ─────────────────────────────
+  const { resetPendingState } = usePendingTask({
+    chatLoading,
+    isConfigValid,
+    pageContent,
+    pageLoading,
+    settingsLoading,
+    sendMessage,
+    summarizePage,
+    setPendingAskText,
+    textareaRef,
+  });
 
-  // 监听 chatLoading 变化，重置执行锁
-  useEffect(() => {
-    if (!chatLoading) {
-      taskExecutingRef.current = false;
-    }
-  }, [chatLoading]);
+  // ── 标签页生命周期（监听激活/URL 变化，通知 background） ─────────────────
+  useTabManager({
+    currentTabId,
+    onSetTabId: setCurrentTabId,
+    onTabSwitch: useCallback(() => {
+      // tab 切换：清空页面内容 + 重置任务状态 + 重新抓取
+      clearPageContent();
+      resetPendingState();
+      fetchPageContent();
+    }, [clearPageContent, resetPendingState, fetchPageContent]),
+    onUrlChange: useCallback(() => {
+      // URL 变化：清空对话 + 页面内容 + 任务状态 + 重新抓取
+      clearMessages();
+      clearPageContent();
+      resetPendingState();
+      fetchPageContent();
+    }, [clearMessages, clearPageContent, resetPendingState, fetchPageContent]),
+  });
 
-  // 监听页面内容加载完成，执行待处理任务
-  useEffect(() => {
-    if (pageContent?.content && pendingExecuteTaskRef.current) {
-      console.log('页面内容已加载，执行待处理任务');
-      const task = pendingExecuteTaskRef.current;
-      pendingExecuteTaskRef.current = null;
-      executeTask(task);
-    }
-  }, [pageContent, executeTask]);
-
-  // 监听来自 background 的任务执行消息
-  useEffect(() => {
-    const handleMessage = (message: { type: string; task?: { type: string; prompt: string } }) => {
-      if (message.type === 'EXECUTE_TASK' && message.task) {
-        console.log('收到 EXECUTE_TASK 消息:', message.task.type);
-
-        // 标记任务已处理，避免 checkPendingTask 重复执行
-        setPendingTaskChecked(true);
-
-        // 延迟执行，等待页面内容加载
-        setTimeout(() => {
-          executeTask(message.task!);
-        }, 100);
-      }
-    };
-
-    chrome.runtime.onMessage.addListener(handleMessage);
-
-    return () => {
-      chrome.runtime.onMessage.removeListener(handleMessage);
-    };
-  }, [executeTask]);
-
-  // 监听标签页切换
-  useEffect(() => {
-    // 获取当前标签页
-    const getCurrentTab = async () => {
-      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-      if (tab?.id) {
-        setCurrentTabId(tab.id);
-      }
-    };
-
-    getCurrentTab();
-
-    // 监听标签页激活事件
-    const handleTabActivated = (activeInfo: chrome.tabs.TabActiveInfo) => {
-      // 标签页切换时，更新 tabId，useChat 会自动加载对应 tab 的对话状态
-      if (activeInfo.tabId !== currentTabId) {
-        setCurrentTabId(activeInfo.tabId);
-        // 注意：不要调用 clearMessages()，useChat 会根据 tabId 自动恢复对话状态
-        clearPageContent();
-        setPendingTaskChecked(false); // 重置任务检查状态
-        taskExecutingRef.current = false; // 重置执行锁
-        fetchPageContent();
-      }
-    };
-
-    // 监听标签页更新事件（URL 变化）
-    const handleTabUpdated = (
-      tabId: number,
-      changeInfo: chrome.tabs.TabChangeInfo
-    ) => {
-      // 当前标签页 URL 变化时，清空对话并重新获取页面内容
-      if (tabId === currentTabId && changeInfo.status === 'complete') {
-        clearMessages();
-        clearPageContent();
-        setPendingTaskChecked(false); // 重置任务检查状态
-        fetchPageContent();
-      }
-    };
-
-    chrome.tabs.onActivated.addListener(handleTabActivated);
-    chrome.tabs.onUpdated.addListener(handleTabUpdated);
-
-    return () => {
-      chrome.tabs.onActivated.removeListener(handleTabActivated);
-      chrome.tabs.onUpdated.removeListener(handleTabUpdated);
-    };
-  }, [currentTabId, clearMessages, clearPageContent, fetchPageContent]);
-
-  // 初始化时获取页面内容
+  // 设置加载完成后获取初始页面内容
   useEffect(() => {
     if (!settingsLoading) {
       fetchPageContent();
     }
   }, [settingsLoading, fetchPageContent]);
-
-  // 当 tabId 变化时，通知 background 该 tab 的侧边栏已打开
-  useEffect(() => {
-    if (currentTabId !== null) {
-      chrome.runtime.sendMessage({
-        type: 'SIDEPANEL_TAB_ACTIVE',
-        tabId: currentTabId,
-      }).catch(() => {
-        // 忽略错误（可能 background 还没准备好）
-      });
-    }
-  }, [currentTabId]);
-
-  // 检查并处理待处理任务（来自右键菜单或浮窗）
-  useEffect(() => {
-    // 只在页面内容加载完成且未检查过任务时执行
-    if (pendingTaskChecked || settingsLoading || pageLoading || !pageContent) {
-      return;
-    }
-
-    const checkPendingTask = async () => {
-      try {
-        const task = await chrome.runtime.sendMessage({ type: 'GET_PENDING_TASK' });
-        setPendingTaskChecked(true); // 标记已检查
-
-        // ask 类型不需要 prompt，只需要 text；其他类型需要 prompt
-        if (!task) {
-          return;
-        }
-        
-        // ask 类型需要 text，其他类型需要 prompt
-        if (task.type === 'ask' && !task.text) {
-          return;
-        }
-        if (task.type !== 'ask' && !task.prompt) {
-          return;
-        }
-
-        console.log('通过 GET_PENDING_TASK 获取到任务:', task.type);
-
-        // 使用统一的 executeTask 执行任务（带排他锁）
-        executeTask(task);
-      } catch (error) {
-        console.error('获取待处理任务失败:', error);
-        setPendingTaskChecked(true);
-      }
-    };
-
-    checkPendingTask();
-  }, [pendingTaskChecked, settingsLoading, pageLoading, pageContent, executeTask]);
 
   // 自动滚动到底部
   useEffect(() => {
@@ -284,10 +142,11 @@ export const App: React.FC = () => {
     }
   }, [input]);
 
-  // 处理发送消息
+  // ── 事件处理 ──────────────────────────────────────────────────────────────
+
+  // 发送消息（自动拼接 pendingAskText）
   const handleSendMessage = useCallback((content: string) => {
     if (!content.trim() || chatLoading) return;
-    // 如果有待提问文本，将用户输入的问题与选中文本组合
     let finalPrompt = content;
     if (pendingAskText) {
       finalPrompt = `${content}\n\n${pendingAskText}`;
@@ -297,40 +156,24 @@ export const App: React.FC = () => {
     setInput('');
   }, [sendMessage, pageContent, chatLoading, pendingAskText]);
 
-  // 处理生成总结
+  // 触发页面总结
   const handleSummarize = useCallback(async () => {
     if (!pageContent?.content || chatLoading) return;
     await summarizePage(pageContent.content);
   }, [pageContent, chatLoading, summarizePage]);
 
-  // 处理常用问题点击
+  // 处理常用问题点击（将 {{text}} 替换为选中文本后发送）
   const handleQuickQuestion = useCallback((question: QuickQuestion) => {
     if (!pendingAskText || chatLoading) return;
-    // 将占位符 {{text}} 替换为选中文本
     const prompt = question.prompt.replace('{{text}}', pendingAskText);
     sendMessage(prompt, pageContent?.content);
     setPendingAskText(null);
     setInput('');
   }, [pendingAskText, chatLoading, sendMessage, pageContent]);
 
-  // 处理表单提交
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    handleSendMessage(input);
-  };
-
-  // 处理键盘事件
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSubmit(e);
-    }
-  };
-
-  // 检查配置是否有效
   const configValid = isConfigValid();
 
-  // 设置页面视图
+  // ── 设置页视图 ────────────────────────────────────────────────────────────
   if (view === 'settings') {
     return (
       <SettingsPanel
@@ -346,6 +189,7 @@ export const App: React.FC = () => {
     );
   }
 
+  // ── 主视图 ────────────────────────────────────────────────────────────────
   return (
     <div className="flex flex-col h-full bg-background">
       {/* 头部 */}
@@ -379,6 +223,7 @@ export const App: React.FC = () => {
               <Brain className="h-4 w-4" />
             </Button>
           </Tooltip>
+
           {messages.length > 0 && (
             <Tooltip content="清空对话">
               <Button
@@ -391,6 +236,7 @@ export const App: React.FC = () => {
               </Button>
             </Tooltip>
           )}
+
           <Tooltip content="设置 API 密钥和模型">
             <Button
               variant="ghost"
@@ -404,7 +250,7 @@ export const App: React.FC = () => {
         </div>
       </div>
 
-      {/* 配置提示 */}
+      {/* 配置提示横幅 */}
       {!configValid && (
         <div className="flex items-center gap-2 p-3 mx-3 mt-3 rounded-lg bg-muted text-sm">
           <AlertCircle className="h-4 w-4 text-muted-foreground flex-shrink-0" />
@@ -467,216 +313,34 @@ export const App: React.FC = () => {
       </div>
 
       {/* 消息列表 */}
-      <ScrollArea className="flex-1 p-3">
-        <div className="space-y-4">
-          {/* 空状态 */}
-          {messages.length === 0 && !chatLoading && (
-            <div className="text-center py-8">
-              <Bot className="h-12 w-12 mx-auto mb-4 text-muted-foreground opacity-50" />
-              <p className="text-sm text-muted-foreground mb-4">
-                Samo 可以帮你总结页面或回答问题
-              </p>
-              {pageContent && configValid && (
-                <Button
-                  onClick={handleSummarize}
-                  disabled={chatLoading}
-                  className="gap-2"
-                >
-                  <Sparkles className="h-4 w-4" />
-                  一键总结页面
-                </Button>
-              )}
-            </div>
-          )}
-
-          {/* 消息列表 */}
-          {messages.map((message) => (
-            <MessageBubble key={message.id} message={message} />
-          ))}
-
-          {/* 流式响应显示 - 使用纯文本避免闪烁 */}
-          {streamingContent && (
-            <StreamingBubble content={streamingContent} />
-          )}
-
-          {/* 加载指示器 */}
-          {chatLoading && !streamingContent && (
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <div className="w-7 h-7 rounded-full bg-muted flex items-center justify-center">
-                <Bot className="h-4 w-4" />
-              </div>
-              <div className="flex items-center gap-1.5 text-sm">
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                <span>思考中...</span>
-              </div>
-            </div>
-          )}
-
-          {/* 错误提示 */}
-          {(chatError || pageError) && (
-            <div className="flex items-center gap-2 p-3 rounded-lg bg-destructive/10 text-destructive text-sm">
-              <AlertCircle className="h-4 w-4 flex-shrink-0" />
-              <span>{chatError || pageError}</span>
-            </div>
-          )}
-
-          <div ref={messagesEndRef} />
-        </div>
-      </ScrollArea>
+      <MessageList
+        messages={messages}
+        streamingContent={streamingContent}
+        chatLoading={chatLoading}
+        chatError={chatError}
+        pageError={pageError}
+        hasPageContent={!!pageContent}
+        configValid={configValid}
+        onSummarize={handleSummarize}
+        messagesEndRef={messagesEndRef}
+      />
 
       {/* 输入区域 */}
-      <div className="p-3 border-t">
-        {/* 常用问题快捷卡片（当有待提问文本时显示） */}
-        {pendingAskText && configValid && (
-          <Card className="mb-3 bg-primary/5 border-primary/20">
-            <CardContent className="p-3">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-sm font-medium">选中的文本</span>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-6 w-6"
-                  onClick={() => setPendingAskText(null)}
-                >
-                  <X className="h-3 w-3" />
-                </Button>
-              </div>
-              <p className="text-xs text-muted-foreground line-clamp-2 mb-3">
-                {pendingAskText}
-              </p>
-              <div className="flex flex-wrap gap-2">
-                {(settings.quickQuestions || []).map((q) => (
-                  <Button
-                    key={q.id}
-                    variant="outline"
-                    size="sm"
-                    className="text-xs h-7"
-                    onClick={() => handleQuickQuestion(q)}
-                    disabled={chatLoading}
-                  >
-                    {q.label}
-                  </Button>
-                ))}
-              </div>
-              <p className="text-xs text-muted-foreground mt-2">
-                💡 点击常用问题或在下方输入自定义问题
-              </p>
-            </CardContent>
-          </Card>
-        )}
-        {/* 快捷操作 */}
-        {messages.length > 0 && pageContent && configValid && (
-          <div className="flex gap-2 mb-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleSummarize}
-              disabled={chatLoading}
-              className="text-xs h-7 gap-1"
-            >
-              <Sparkles className="h-3 w-3" />
-              重新总结
-            </Button>
-          </div>
-        )}
-
-        {/* 输入框 */}
-        <form onSubmit={handleSubmit} className="flex gap-2">
-          <Textarea
-            ref={textareaRef}
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder={configValid ? "输入消息，或点击上方总结页面..." : "请先配置 API 密钥"}
-            className="min-h-[40px] max-h-[120px] resize-none text-sm"
-            rows={1}
-            disabled={chatLoading || !configValid}
-          />
-          <Button
-            type="submit"
-            size="icon"
-            disabled={!input.trim() || chatLoading || !configValid}
-            className="flex-shrink-0 h-10 w-10"
-          >
-            {chatLoading ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Send className="h-4 w-4" />
-            )}
-          </Button>
-        </form>
-      </div>
-    </div>
-  );
-};
-
-interface MessageBubbleProps {
-  message: ChatMessage;
-}
-
-/**
- * 消息气泡组件 - 使用 memo 优化避免不必要的重渲染
- */
-const MessageBubble = memo<MessageBubbleProps>(({ message }) => {
-  const isUser = message.role === 'user';
-
-  return (
-    <div className={cn('flex gap-2', isUser && 'flex-row-reverse')}>
-      {/* 头像 */}
-      <div
-        className={cn(
-          'flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center',
-          isUser ? 'bg-primary text-primary-foreground' : 'bg-muted'
-        )}
-      >
-        {isUser ? <User className="h-4 w-4" /> : <Bot className="h-4 w-4" />}
-      </div>
-
-      {/* 消息内容 */}
-      <div
-        className={cn(
-          'flex-1 rounded-lg px-3 py-2 text-sm max-w-[85%]',
-          isUser ? 'bg-primary text-primary-foreground ml-8' : 'bg-muted mr-8'
-        )}
-      >
-        {isUser ? (
-          // 用户消息保持纯文本
-          <div className="whitespace-pre-wrap break-words">{message.content}</div>
-        ) : (
-          // AI 消息使用 Markdown 渲染
-          <div className="break-words">
-            <Markdown content={message.content} />
-          </div>
-        )}
-      </div>
-    </div>
-  );
-});
-
-MessageBubble.displayName = 'MessageBubble';
-
-interface StreamingBubbleProps {
-  content: string;
-}
-
-/**
- * 流式输出气泡组件 - 使用 Markdown 渲染
- */
-const StreamingBubble: React.FC<StreamingBubbleProps> = ({ content }) => {
-  return (
-    <div className="flex gap-2">
-      {/* 头像 */}
-      <div className="flex-shrink-0 w-7 h-7 rounded-full bg-muted flex items-center justify-center">
-        <Bot className="h-4 w-4" />
-      </div>
-
-      {/* 消息内容 - 使用 Markdown 渲染 */}
-      <div className="flex-1 rounded-lg px-3 py-2 text-sm max-w-[85%] bg-muted mr-8">
-        <div className="break-words">
-          <Markdown content={content} />
-          <span className="inline-block w-1.5 h-4 ml-0.5 bg-foreground/70 animate-pulse align-middle" />
-        </div>
-      </div>
+      <InputArea
+        input={input}
+        setInput={setInput}
+        chatLoading={chatLoading}
+        configValid={configValid}
+        pendingAskText={pendingAskText}
+        onClearPendingAskText={() => setPendingAskText(null)}
+        quickQuestions={settings.quickQuestions || []}
+        onQuickQuestion={handleQuickQuestion}
+        onSend={handleSendMessage}
+        onSummarize={handleSummarize}
+        hasMessages={messages.length > 0}
+        hasPageContent={!!pageContent}
+        textareaRef={textareaRef}
+      />
     </div>
   );
 };
