@@ -9,12 +9,12 @@
  *  - StreamingBubble：AI 流式输出气泡，带闪烁光标
  **/
 
-import React, { memo, RefObject } from 'react';
+import React, { memo, useState, useCallback, RefObject } from 'react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { ChatMessage } from '@/types';
 import { cn } from '@/lib/utils';
-import { Bot, User, Loader2, AlertCircle, Sparkles } from 'lucide-react';
+import { Bot, User, Loader2, AlertCircle, Sparkles, Copy, Check } from 'lucide-react';
 import { Markdown } from '@/components/Markdown';
 
 interface MessageListProps {
@@ -128,14 +128,22 @@ interface MessageBubbleProps {
  * 消息气泡组件
  *
  * - 用户消息：右对齐，蓝色背景，纯文本渲染
- * - AI 消息：左对齐，灰色背景，Markdown 渲染
+ * - AI 消息：左对齐，灰色背景，Markdown 渲染 + 悬停复制按钮
  * - 使用 memo 优化，只有 message 引用变化时才重渲染
  */
 export const MessageBubble = memo<MessageBubbleProps>(({ message }) => {
   const isUser = message.role === 'user';
+  // 复制成功后短暂显示对勾，2 秒后复原
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = useCallback(async () => {
+    await navigator.clipboard.writeText(message.content);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }, [message.content]);
 
   return (
-    <div className={cn('flex gap-2', isUser && 'flex-row-reverse')}>
+    <div className={cn('flex gap-2 group', isUser && 'flex-row-reverse')}>
       {/* 头像 */}
       <div
         className={cn(
@@ -157,10 +165,27 @@ export const MessageBubble = memo<MessageBubbleProps>(({ message }) => {
           // 用户消息保持纯文本，避免 Markdown 误渲染
           <div className="whitespace-pre-wrap break-words">{message.content}</div>
         ) : (
-          // AI 消息使用 Markdown 渲染
-          <div className="break-words">
-            <Markdown content={message.content} />
-          </div>
+          // AI 消息：Markdown 渲染 + 底部复制按钮
+          <>
+            <div className="break-words">
+              <Markdown content={message.content} />
+            </div>
+            {/* 复制按钮：悬停气泡时显示，位于内容底部右侧 */}
+            <div className="flex justify-end mt-1 -mb-0.5 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-5 w-5"
+                onClick={handleCopy}
+                title={copied ? '已复制' : '复制'}
+              >
+                {copied
+                  ? <Check className="h-3 w-3 text-green-500" />
+                  : <Copy className="h-3 w-3 text-muted-foreground" />
+                }
+              </Button>
+            </div>
+          </>
         )}
       </div>
     </div>
