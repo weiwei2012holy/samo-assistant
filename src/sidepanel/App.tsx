@@ -319,7 +319,7 @@ export const App: React.FC = () => {
         chatLoading={chatLoading}
         chatError={chatError}
         pageError={pageError}
-        hasPageContent={!!pageContent}
+        hasPageContent={!!pageContent?.content}
         configValid={configValid}
         onSummarize={handleSummarize}
         messagesEndRef={messagesEndRef}
@@ -338,7 +338,7 @@ export const App: React.FC = () => {
         onSend={handleSendMessage}
         onSummarize={handleSummarize}
         hasMessages={messages.length > 0}
-        hasPageContent={!!pageContent}
+        hasPageContent={!!pageContent?.content}
         textareaRef={textareaRef}
       />
     </div>
