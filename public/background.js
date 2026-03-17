@@ -11,11 +11,33 @@ let pendingTask = null;
 const enabledTabs = new Set();
 
 /**
+ * Service Worker 是短暂的，Chrome 会在空闲时将其终止，导致内存中的 enabledTabs 丢失。
+ * 使用 chrome.storage.session 在整个浏览器会话内持久化 enabledTabs，
+ * 确保 Service Worker 重启后能正确恢复状态，避免侧边栏被意外关闭。
+ */
+
+/** Service Worker 启动时从 session storage 恢复 enabledTabs 的 Promise */
+const initPromise = chrome.storage.session.get('enabledTabs').then(data => {
+  if (Array.isArray(data.enabledTabs)) {
+    data.enabledTabs.forEach(id => enabledTabs.add(id));
+    console.log('从 session storage 恢复 enabledTabs:', [...enabledTabs]);
+  }
+});
+
+/**
+ * 将当前 enabledTabs 持久化到 session storage
+ */
+function persistEnabledTabs() {
+  chrome.storage.session.set({ enabledTabs: [...enabledTabs] });
+}
+
+/**
  * 为指定 tab 启用侧边栏（同步版本，不返回 Promise）
  * @param {number} tabId
  */
 function enableSidePanelForTab(tabId) {
   enabledTabs.add(tabId);
+  persistEnabledTabs(); // 同步持久化，防止 Service Worker 重启后丢失
   chrome.sidePanel.setOptions({
     tabId,
     path: 'sidepanel.html',
@@ -29,6 +51,7 @@ function enableSidePanelForTab(tabId) {
  */
 async function disableSidePanelForTab(tabId) {
   enabledTabs.delete(tabId);
+  persistEnabledTabs(); // 同步持久化
   await chrome.sidePanel.setOptions({
     tabId,
     enabled: false
@@ -101,6 +124,7 @@ chrome.runtime.onInstalled.addListener(() => {
 // 监听标签页关闭，清理状态
 chrome.tabs.onRemoved.addListener((tabId) => {
   enabledTabs.delete(tabId);
+  persistEnabledTabs(); // 同步持久化
 });
 
 // 监听新标签页创建，禁用其侧边栏
@@ -113,6 +137,9 @@ chrome.tabs.onCreated.addListener(async (tab) => {
 
 // 监听标签页切换
 chrome.tabs.onActivated.addListener(async (activeInfo) => {
+  // 等待初始化完成，确保 enabledTabs 已从 session storage 恢复
+  await initPromise;
+
   const tabId = activeInfo.tabId;
 
   // 如果该 tab 不在已启用集合中，禁用其侧边栏

@@ -125,7 +125,7 @@ export function usePendingTask({
     taskExecutingRef.current = true;
     console.log('开始执行任务:', task.type);
     if (task.type === 'summarize_page') {
-      summarizePageRef.current(pageContentRef.current!.content);
+      summarizePageRef.current(pageContentRef.current?.content || '');
     } else {
       sendMessageRef.current(task.prompt, pageContentRef.current?.content);
     }
@@ -146,14 +146,25 @@ export function usePendingTask({
   }, [chatLoading]);
 
   // 页面内容加载完成后，执行队列中的延迟任务
+  // 两种触发条件：
+  //   1. 内容就绪（pageContent.content 非空）→ 正常执行
+  //   2. 加载已结束但无内容（pageLoading/settingsLoading 均为 false）→ 也执行，
+  //      避免任务在无法提取内容的页面上永久挂起
   useEffect(() => {
-    if (pageContent?.content && pendingExecuteTaskRef.current) {
+    if (!pendingExecuteTaskRef.current) return;
+    // 仍在加载中，继续等待
+    if (pageLoading || settingsLoading) return;
+
+    const task = pendingExecuteTaskRef.current;
+    pendingExecuteTaskRef.current = null;
+
+    if (pageContent?.content) {
       console.log('页面内容已加载，执行待处理任务');
-      const task = pendingExecuteTaskRef.current;
-      pendingExecuteTaskRef.current = null;
-      executeTask(task);
+    } else {
+      console.log('页面加载完成但无内容，仍执行待处理任务（将向 AI 告知无内容）');
     }
-  }, [pageContent, executeTask]);
+    executeTask(task);
+  }, [pageContent, pageLoading, settingsLoading, executeTask]);
 
   // executeTask ref（供 EXECUTE_TASK 监听器使用，避免重注册）
   const executeTaskRef = useRef(executeTask);
