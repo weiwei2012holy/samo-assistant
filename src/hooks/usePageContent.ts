@@ -36,25 +36,29 @@ async function sendMessageWithRetry(
  * 页面内容 Hook
  * @returns 页面内容状态和获取方法
  */
-export function usePageContent() {
+export function usePageContent(defaultTabId?: number | null) {
   const [pageContent, setPageContent] = useState<PageContent | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // 获取当前页面内容
-  const fetchPageContent = useCallback(async () => {
+  const fetchPageContent = useCallback(async (tabIdOverride?: number | null) => {
     try {
       setLoading(true);
       setError(null);
 
-      // 获取当前活动标签页
-      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      // 窗口模式优先使用显式 tabId；无显式值时回退当前活动标签页
+      let targetTabId = tabIdOverride ?? defaultTabId ?? null;
+      if (!targetTabId) {
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        targetTabId = tab?.id || null;
+      }
 
-      if (!tab?.id) {
+      if (!targetTabId) {
         throw new Error('无法获取当前标签页');
       }
 
-      const response = await sendMessageWithRetry(tab.id, { type: 'EXTRACT_CONTENT' });
+      const response = await sendMessageWithRetry(targetTabId, { type: 'EXTRACT_CONTENT' });
 
       if (response.error) {
         throw new Error(response.error);
@@ -74,7 +78,7 @@ export function usePageContent() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [defaultTabId]);
 
   // 清除页面内容
   const clearPageContent = useCallback(() => {

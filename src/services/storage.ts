@@ -4,7 +4,14 @@
  * @Description Chrome 存储服务，使用 chrome.storage.sync 同步用户配置
  **/
 
-import { AppSettings, ProviderConfig, ModelProvider, QuickQuestion } from '@/types';
+import {
+  AppSettings,
+  ProviderConfig,
+  ModelProvider,
+  QuickQuestion,
+  AssistantDisplayMode,
+  FloatButtonClickAction,
+} from '@/types';
 
 // 存储键名常量
 const STORAGE_KEYS = {
@@ -57,6 +64,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   providerConfigs: {},
   theme: 'system',
   enableReasoning: false,
+  assistantDisplayMode: 'overlay',
+  floatButtonClickAction: 'open',
   translateShortcut: 'Control',
   quickQuestions: [
     { id: '1', label: '翻译', prompt: '请将以下内容翻译成中文（如果已是中文则翻译成英文）：\n\n{{text}}' },
@@ -90,6 +99,7 @@ class StorageService {
         // 旧版本只有单个 providerConfig，迁移到新结构
         const oldConfig = settings.providerConfig as ProviderConfig;
         return {
+          ...DEFAULT_SETTINGS,
           currentProvider: oldConfig.provider,
           providerConfigs: {
             [oldConfig.provider]: oldConfig,
@@ -207,6 +217,26 @@ class StorageService {
   async updateTranslateShortcut(shortcut: string): Promise<void> {
     const settings = await this.getSettings();
     settings.translateShortcut = shortcut;
+    await this.saveSettings(settings);
+  }
+
+  /**
+   * 更新助手界面打开方式
+    * @param mode - 打开方式（sidepanel/window/overlay）
+   */
+  async updateAssistantDisplayMode(mode: AssistantDisplayMode): Promise<void> {
+    const settings = await this.getSettings();
+    settings.assistantDisplayMode = mode;
+    await this.saveSettings(settings);
+  }
+
+  /**
+   * 更新浮窗主按钮点击行为
+   * @param action - 点击行为（open/open_and_summarize）
+   */
+  async updateFloatButtonClickAction(action: FloatButtonClickAction): Promise<void> {
+    const settings = await this.getSettings();
+    settings.floatButtonClickAction = action;
     await this.saveSettings(settings);
   }
 

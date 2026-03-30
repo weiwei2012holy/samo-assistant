@@ -38,6 +38,13 @@ import { InputArea } from '@/components/InputArea';
 
 type View = 'main' | 'settings';
 
+interface AppProps {
+  /** 窗口模式下要绑定的目标标签页 ID */
+  initialTargetTabId?: number | null;
+  /** 当前容器模式（sidepanel/window/overlay） */
+  surfaceMode?: 'sidepanel' | 'window' | 'overlay';
+}
+
 /**
  * 主应用组件
  *
@@ -47,11 +54,14 @@ type View = 'main' | 'settings';
  *  3. 配置提示横幅
  *  4. 页面信息卡片
  */
-export const App: React.FC = () => {
+export const App: React.FC<AppProps> = ({
+  initialTargetTabId = null,
+  surfaceMode = 'sidepanel',
+}) => {
   const [view, setView] = useState<View>('main');
   const [input, setInput] = useState('');
   // currentTabId 由 useTabManager 写入，由 useChat 读取
-  const [currentTabId, setCurrentTabId] = useState<number | null>(null);
+  const [currentTabId, setCurrentTabId] = useState<number | null>(initialTargetTabId);
   // 待提问的选中文本（来自右键"在侧边栏提问"）
   const [pendingAskText, setPendingAskText] = useState<string | null>(null);
 
@@ -65,6 +75,8 @@ export const App: React.FC = () => {
     updateProviderConfig,
     getProviderConfig,
     updateEnableReasoning,
+    updateAssistantDisplayMode,
+    updateFloatButtonClickAction,
     updateTranslateShortcut,
     updateQuickQuestions,
     isConfigValid,
@@ -77,7 +89,7 @@ export const App: React.FC = () => {
     error: pageError,
     fetchPageContent,
     clearPageContent,
-  } = usePageContent();
+  } = usePageContent(initialTargetTabId);
 
   // ── 聊天（依赖 currentTabId，每次切换 tab 自动恢复对应对话） ──────────────
   const {
@@ -107,6 +119,7 @@ export const App: React.FC = () => {
   useTabManager({
     currentTabId,
     onSetTabId: setCurrentTabId,
+    fixedTabId: surfaceMode === 'window' || surfaceMode === 'overlay' ? initialTargetTabId : null,
     onTabSwitch: useCallback(() => {
       // tab 切换：清空页面内容 + 重置任务状态 + 重新抓取
       clearPageContent();
@@ -125,9 +138,9 @@ export const App: React.FC = () => {
   // 设置加载完成后获取初始页面内容
   useEffect(() => {
     if (!settingsLoading) {
-      fetchPageContent();
+      fetchPageContent(currentTabId);
     }
-  }, [settingsLoading, fetchPageContent]);
+  }, [settingsLoading, fetchPageContent, currentTabId]);
 
   // 自动滚动到底部
   useEffect(() => {
@@ -141,6 +154,30 @@ export const App: React.FC = () => {
       textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 120)}px`;
     }
   }, [input]);
+
+  // 监听来自 overlay 外壳的消息（overlay 模式下按钮在外壳中）
+  useEffect(() => {
+    if (surfaceMode !== 'overlay') return;
+
+    const handleMessage = (event: MessageEvent) => {
+      if (typeof event.data !== 'object' || !event.data.type) return;
+
+      switch (event.data.type) {
+        case 'OVERLAY_TOGGLE_REASONING':
+          updateEnableReasoning(!settings.enableReasoning);
+          break;
+        case 'OVERLAY_CLEAR_MESSAGES':
+          clearMessages();
+          break;
+        case 'OVERLAY_OPEN_SETTINGS':
+          setView('settings');
+          break;
+      }
+    };
+
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, [surfaceMode, settings.enableReasoning, updateEnableReasoning, clearMessages]);
 
   // ── 事件处理 ──────────────────────────────────────────────────────────────
 
@@ -185,6 +222,10 @@ export const App: React.FC = () => {
         onUpdateTranslateShortcut={updateTranslateShortcut}
         quickQuestions={settings.quickQuestions}
         onUpdateQuickQuestions={updateQuickQuestions}
+        assistantDisplayMode={settings.assistantDisplayMode || 'sidepanel'}
+        onUpdateAssistantDisplayMode={updateAssistantDisplayMode}
+        floatButtonClickAction={settings.floatButtonClickAction || 'open'}
+        onUpdateFloatButtonClickAction={updateFloatButtonClickAction}
       />
     );
   }
@@ -192,63 +233,65 @@ export const App: React.FC = () => {
   // ── 主视图 ────────────────────────────────────────────────────────────────
   return (
     <div className="flex flex-col h-full bg-background">
-      {/* 头部 */}
-      <div className="flex items-center justify-between p-3 border-b">
-        <h1 className="text-base font-semibold">Samo 助手</h1>
-        <div className="flex items-center gap-1">
-          {/* 思考模式开关 */}
-          <Tooltip
-            content={
-              <div className="max-w-[200px]">
-                <div className="font-medium mb-1">
-                  {settings.enableReasoning ? '🧠 思考模式：开启' : '🧠 思考模式：关闭'}
+      {/* 头部：overlay 模式下隐藏（功能按钮已在外壳中） */}
+      {surfaceMode !== 'overlay' && (
+        <div className="flex items-center justify-between p-3 border-b">
+          <h1 className="text-base font-semibold">Samo 助手</h1>
+          <div className="flex items-center gap-1">
+            {/* 思考模式开关 */}
+            <Tooltip
+              content={
+                <div className="max-w-[200px]">
+                  <div className="font-medium mb-1">
+                    {settings.enableReasoning ? '🧠 思考模式：开启' : '🧠 思考模式：关闭'}
+                  </div>
+                  <div className="text-muted-foreground">
+                    {settings.enableReasoning
+                      ? '使用 DeepSeek Reasoner 时会显示思考过程'
+                      : '点击开启，查看 AI 的思考过程'}
+                  </div>
                 </div>
-                <div className="text-muted-foreground">
-                  {settings.enableReasoning
-                    ? '使用 DeepSeek Reasoner 时会显示思考过程'
-                    : '点击开启，查看 AI 的思考过程'}
-                </div>
-              </div>
-            }
-          >
-            <Button
-              variant={settings.enableReasoning ? 'default' : 'ghost'}
-              size="icon"
-              onClick={() => updateEnableReasoning(!settings.enableReasoning)}
-              className={cn(
-                'h-8 w-8',
-                settings.enableReasoning && 'bg-primary text-primary-foreground'
-              )}
+              }
             >
-              <Brain className="h-4 w-4" />
-            </Button>
-          </Tooltip>
+              <Button
+                variant={settings.enableReasoning ? 'default' : 'ghost'}
+                size="icon"
+                onClick={() => updateEnableReasoning(!settings.enableReasoning)}
+                className={cn(
+                  'h-8 w-8',
+                  settings.enableReasoning && 'bg-primary text-primary-foreground'
+                )}
+              >
+                <Brain className="h-4 w-4" />
+              </Button>
+            </Tooltip>
 
-          {messages.length > 0 && (
-            <Tooltip content="清空对话">
+            {messages.length > 0 && (
+              <Tooltip content="清空对话">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={clearMessages}
+                  className="h-8 w-8"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </Tooltip>
+            )}
+
+            <Tooltip content="设置 API 密钥和模型">
               <Button
                 variant="ghost"
                 size="icon"
-                onClick={clearMessages}
+                onClick={() => setView('settings')}
                 className="h-8 w-8"
               >
-                <Trash2 className="h-4 w-4" />
+                <Settings className="h-4 w-4" />
               </Button>
             </Tooltip>
-          )}
-
-          <Tooltip content="设置 API 密钥和模型">
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setView('settings')}
-              className="h-8 w-8"
-            >
-              <Settings className="h-4 w-4" />
-            </Button>
-          </Tooltip>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* 配置提示横幅 */}
       {!configValid && (
@@ -297,7 +340,7 @@ export const App: React.FC = () => {
               <Button
                 variant="ghost"
                 size="icon"
-                onClick={fetchPageContent}
+                onClick={() => fetchPageContent(currentTabId)}
                 disabled={pageLoading}
                 className="h-7 w-7 flex-shrink-0"
               >

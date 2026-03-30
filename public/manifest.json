@@ -13,7 +13,8 @@
     "activeTab",
     "storage",
     "tabs",
-    "contextMenus"
+    "contextMenus",
+    "windows"
   ],
   "host_permissions": [
     "<all_urls>"
@@ -32,6 +33,17 @@
       "css": ["content.css"],
       "run_at": "document_idle",
       "all_frames": true
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "sidepanel.html",
+        "assets/*"
+      ],
+      "matches": [
+        "<all_urls>"
+      ]
     }
   ],
   "action": {

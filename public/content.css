@@ -143,6 +143,116 @@
   visibility: visible;
 }
 
+/* ==================== 页面内助手浮窗 ==================== */
+
+.ai-sidebar-overlay-container {
+  position: fixed;
+  top: 24px;
+  right: 24px;
+  width: min(420px, calc(100vw - 24px));
+  height: min(82vh, 840px);
+  z-index: 2147483647;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 20px 60px rgba(15, 23, 42, 0.28);
+  background: #ffffff;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  resize: both;
+  min-width: 320px;
+  min-height: 420px;
+  will-change: transform;
+}
+
+.ai-sidebar-overlay-dragging {
+  transition: none !important;
+}
+
+.ai-sidebar-overlay-dragging .ai-sidebar-overlay-iframe {
+  pointer-events: none;
+}
+
+.ai-sidebar-overlay-snapping-x {
+  transition: left 0.12s ease;
+}
+
+.ai-sidebar-overlay-snapping-y {
+  transition: top 0.12s ease;
+}
+
+.ai-sidebar-overlay-hidden {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(8px) scale(0.99);
+}
+
+.ai-sidebar-overlay-iframe {
+  width: 100%;
+  height: calc(100% - 56px);
+  border: none;
+  background: #fff;
+  pointer-events: auto;
+}
+
+.ai-sidebar-overlay-header {
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 6px 0 12px;
+  background: #f5f5f5;
+  border-bottom: 1px solid #e0e0e0;
+  color: #333333;
+  cursor: move;
+  user-select: none;
+}
+
+.ai-sidebar-overlay-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #424242;
+}
+
+.ai-sidebar-overlay-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.ai-sidebar-overlay-action-btn {
+  position: static;
+  width: 44px;
+  height: 44px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: #666666;
+  cursor: pointer;
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: all 0.15s ease;
+}
+
+.ai-sidebar-overlay-action-btn:hover {
+  background: #e8e8e8;
+  color: #333333;
+}
+
+.ai-sidebar-overlay-minimized {
+  height: 56px !important;
+  min-height: 56px;
+  resize: none;
+}
+
+.ai-sidebar-overlay-minimized .ai-sidebar-overlay-iframe {
+  display: none;
+}
+
 /* 深色模式支持 */
 @media (prefers-color-scheme: dark) {
   .ai-sidebar-float-menu-item {
@@ -170,6 +280,15 @@
   .ai-sidebar-float-container {
     right: 10px;
     bottom: 60px;
+  }
+
+  .ai-sidebar-overlay-container {
+    top: 8px;
+    right: 8px;
+    width: calc(100vw - 16px);
+    height: calc(100vh - 16px);
+    border-radius: 12px;
+    resize: none;
   }
 
   .ai-sidebar-float-main {

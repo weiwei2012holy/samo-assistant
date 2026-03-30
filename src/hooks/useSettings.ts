@@ -5,7 +5,14 @@
  **/
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { AppSettings, ProviderConfig, ModelProvider, QuickQuestion } from '@/types';
+import {
+  AppSettings,
+  ProviderConfig,
+  ModelProvider,
+  QuickQuestion,
+  AssistantDisplayMode,
+  FloatButtonClickAction,
+} from '@/types';
 import { storageService, DEFAULT_SETTINGS } from '@/services/storage';
 
 /**
@@ -122,6 +129,18 @@ export function useSettings() {
     await saveSettings(newSettings);
   }, [settings, saveSettings]);
 
+  // 更新助手打开方式
+  const updateAssistantDisplayMode = useCallback(async (mode: AssistantDisplayMode) => {
+    const newSettings = { ...settings, assistantDisplayMode: mode };
+    await saveSettings(newSettings);
+  }, [settings, saveSettings]);
+
+  // 更新浮窗主按钮点击行为
+  const updateFloatButtonClickAction = useCallback(async (action: FloatButtonClickAction) => {
+    const newSettings = { ...settings, floatButtonClickAction: action };
+    await saveSettings(newSettings);
+  }, [settings, saveSettings]);
+
   // 检查配置是否有效
   const isConfigValid = useCallback(() => {
     return !!(providerConfig.apiKey && providerConfig.model);
@@ -139,6 +158,8 @@ export function useSettings() {
     updateEnableReasoning,
     updateTranslateShortcut,
     updateQuickQuestions,
+    updateAssistantDisplayMode,
+    updateFloatButtonClickAction,
     isConfigValid,
   };
 }

@@ -18,6 +18,8 @@ interface UseTabManagerOptions {
   onTabSwitch: () => void;
   /** 当前标签页 URL 加载完成时触发 */
   onUrlChange: () => void;
+  /** 固定标签页 ID（窗口模式使用，传入后不监听激活/URL 事件） */
+  fixedTabId?: number | null;
 }
 
 /**
@@ -33,6 +35,7 @@ export function useTabManager({
   onSetTabId,
   onTabSwitch,
   onUrlChange,
+  fixedTabId = null,
 }: UseTabManagerOptions): void {
   // --- callback refs：始终持有最新引用，监听器不随回调变化而重注册 ---
   const currentTabIdRef = useRef<number | null>(currentTabId);
@@ -48,13 +51,20 @@ export function useTabManager({
 
   // 初始化：获取当前激活的标签页
   useEffect(() => {
+    if (fixedTabId) {
+      onSetTabIdRef.current(fixedTabId);
+      return;
+    }
+
     chrome.tabs.query({ active: true, currentWindow: true }).then(([tab]) => {
       if (tab?.id) onSetTabIdRef.current(tab.id);
     });
-  }, []);
+  }, [fixedTabId]);
 
   // 监听标签页激活事件（空依赖 → 仅注册一次）
   useEffect(() => {
+    if (fixedTabId) return;
+
     const handler = (activeInfo: chrome.tabs.TabActiveInfo) => {
       if (activeInfo.tabId !== currentTabIdRef.current) {
         onSetTabIdRef.current(activeInfo.tabId);
@@ -63,10 +73,12 @@ export function useTabManager({
     };
     chrome.tabs.onActivated.addListener(handler);
     return () => chrome.tabs.onActivated.removeListener(handler);
-  }, []);
+  }, [fixedTabId]);
 
   // 监听标签页 URL 更新事件（空依赖 → 仅注册一次）
   useEffect(() => {
+    if (fixedTabId) return;
+
     const handler = (tabId: number, changeInfo: chrome.tabs.TabChangeInfo) => {
       if (tabId === currentTabIdRef.current && changeInfo.status === 'complete') {
         onUrlChangeRef.current();
@@ -74,10 +86,13 @@ export function useTabManager({
     };
     chrome.tabs.onUpdated.addListener(handler);
     return () => chrome.tabs.onUpdated.removeListener(handler);
-  }, []);
+  }, [fixedTabId]);
 
   // 当 tabId 变化时，通知 background 当前侧边栏关联的 tab
   useEffect(() => {
+    // 仅 sidepanel 模式需要向 background 回报“当前激活 tab”
+    if (fixedTabId) return;
+
     if (currentTabId !== null) {
       chrome.runtime.sendMessage({
         type: 'SIDEPANEL_TAB_ACTIVE',
@@ -86,5 +101,5 @@ export function useTabManager({
         // 忽略：background 可能尚未就绪
       });
     }
-  }, [currentTabId]);
+  }, [currentTabId, fixedTabId]);
 }
