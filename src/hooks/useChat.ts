@@ -33,6 +33,18 @@ const loadingTabs = new Set<number>();
 const tabStreamingStates = new Map<number, string>();
 
 /**
+ * 监听标签页关闭事件，自动清理内存中的对话状态，防止内存泄漏
+ *
+ * 侧边栏（sidepanel）会在整个浏览器生命周期内复用，如果不及时清理
+ * 已关闭标签页的 Map 记录，随着用户关闭标签页增多，会导致内存占用持续上涨。
+ */
+chrome.tabs.onRemoved.addListener((tabId) => {
+  tabChatStates.delete(tabId);
+  loadingTabs.delete(tabId);
+  tabStreamingStates.delete(tabId);
+});
+
+/**
  * 聊天管理 Hook
  * @param providerConfig - 供应商配置
  * @param enableReasoning - 是否启用思考模式
