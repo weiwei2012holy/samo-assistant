@@ -113,6 +113,7 @@ export const App: React.FC<AppProps> = ({
     summarizePage,
     setPendingAskText,
     textareaRef,
+    targetTabId: surfaceMode === 'overlay' || surfaceMode === 'window' ? initialTargetTabId : null,
   });
 
   // ── 标签页生命周期（监听激活/URL 变化，通知 background） ─────────────────

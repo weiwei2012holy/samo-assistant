@@ -16,10 +16,16 @@ npm run build
 
 # 代码检查
 npm run lint
+
+# 加载扩展到 Chrome
+# 1. 访问 chrome://extensions/
+# 2. 开启"开发者模式"
+# 3. 点击"加载已解压的扩展程序"，选择 dist/ 目录
 ```
 
 > 执行前需设置环境变量：`GOPATH=/Users/yidejia/Project`
 > 当前无测试框架，不存在 `npm test`。
+> 修改 content script 后需在扩展管理页面点击刷新按钮，然后刷新目标网页。
 
 ## 构建产物说明
 
