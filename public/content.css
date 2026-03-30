@@ -151,8 +151,7 @@
   right: 20px;
   width: min(400px, calc(100vw - 20px));
   height: min(80vh, 800px);
-  z-index: 2147483647;
-  border-radius: 14px;
+  z-index: 2147483645;
   overflow: hidden;
   /* 多层阴影：外层环境阴影 + 内层高光 */
   box-shadow:
@@ -306,21 +305,6 @@
   height: 14px;
   flex-shrink: 0;
   stroke-width: 2;
-}
-
-/* 最小化状态 */
-.ai-sidebar-overlay-minimized {
-  height: 44px !important;
-  min-height: 44px;
-  resize: none;
-  /* 最小化时改为紧凑阴影 */
-  box-shadow:
-    0 4px 16px rgba(0, 0, 0, 0.12),
-    0 1px 4px rgba(0, 0, 0, 0.08);
-}
-
-.ai-sidebar-overlay-minimized .ai-sidebar-overlay-iframe {
-  display: none;
 }
 
 /* 深色模式 */

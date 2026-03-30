@@ -41,19 +41,16 @@ interface TranslateTarget {
 const OVERLAY_CONTAINER_ID = 'ai-sidebar-overlay-container';
 const OVERLAY_IFRAME_ID = 'ai-sidebar-overlay-iframe';
 const OVERLAY_CLOSE_ID = 'ai-sidebar-overlay-close';
-const OVERLAY_MINIMIZE_ID = 'ai-sidebar-overlay-minimize';
 const OVERLAY_HEADER_ID = 'ai-sidebar-overlay-header';
 const OVERLAY_STATE_STORAGE_KEY = 'ai_sidebar_overlay_state';
 const OVERLAY_EDGE_GAP = 6;
 const OVERLAY_SNAP_THRESHOLD = 24;
-const OVERLAY_EXPANDED_STATE_DATA_KEY = 'expandedState';
 
 interface OverlayState {
   left: number;
   top: number;
   width: number;
   height: number;
-  minimized: boolean;
   /** 保存时距右侧视口边缘的距离，用于跨视口尺寸恢复位置 */
   rightOffset?: number;
   /** 保存时距底部视口边缘的距离，用于跨视口尺寸恢复位置 */
@@ -68,7 +65,6 @@ function getDefaultOverlayState(): OverlayState {
     top: 24,
     width,
     height,
-    minimized: false,
   };
 }
 
@@ -93,8 +89,7 @@ function loadOverlayState(): Promise<OverlayState> {
         top = Math.max(OVERLAY_EDGE_GAP, window.innerHeight - bottomOffset - height);
       }
 
-      // minimized 是页面级状态，不跨 Tab 共享，始终以展开态打开
-      resolve({ left, top, width, height, minimized: false });
+      resolve({ left, top, width, height });
     });
   });
 }
@@ -137,7 +132,6 @@ function clampOverlayState(state: OverlayState): OverlayState {
     top,
     width,
     height,
-    minimized: !!state.minimized,
   };
 }
 
@@ -178,75 +172,10 @@ function readOverlayStateFromElement(container: HTMLDivElement): OverlayState {
     top: Math.round(rect.top),
     width: Math.round(rect.width),
     height: Math.round(rect.height),
-    minimized: container.classList.contains('ai-sidebar-overlay-minimized'),
   };
 }
 
-function setExpandedOverlayState(container: HTMLDivElement, state: OverlayState): void {
-  const expanded = clampOverlayState({
-    ...state,
-    minimized: false,
-  });
-  container.dataset[OVERLAY_EXPANDED_STATE_DATA_KEY] = JSON.stringify(expanded);
-}
-
-function getExpandedOverlayState(container: HTMLDivElement): OverlayState | null {
-  const raw = container.dataset[OVERLAY_EXPANDED_STATE_DATA_KEY];
-  if (!raw) return null;
-
-  try {
-    const parsed = JSON.parse(raw) as OverlayState;
-    return clampOverlayState({
-      ...parsed,
-      minimized: false,
-    });
-  } catch (error) {
-    console.error('解析浮窗展开态快照失败:', error);
-    return null;
-  }
-}
-
-function updateMinimizeButton(container: HTMLDivElement): void {
-  const minimizeBtn = container.querySelector(`#${OVERLAY_MINIMIZE_ID}`) as HTMLButtonElement | null;
-  if (!minimizeBtn) return;
-
-  const minimized = container.classList.contains('ai-sidebar-overlay-minimized');
-  // 最小化态：显示"恢复"图标（向上箭头）；展开态：显示"最小化"图标（减号）
-  if (minimized) {
-    minimizeBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;stroke-width:2"><path d="M5 15H3a2 2 0 0 1-2-2V3a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v2"/><rect width="14" height="14" x="7" y="7" rx="2" ry="2"/></svg>`;
-    minimizeBtn.title = '恢复助手';
-    minimizeBtn.setAttribute('aria-label', '恢复助手');
-  } else {
-    minimizeBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;stroke-width:2"><path d="M5 12h14"/></svg>`;
-    minimizeBtn.title = '最小化助手';
-    minimizeBtn.setAttribute('aria-label', '最小化助手');
-  }
-}
-
-function toggleOverlayMinimize(container: HTMLDivElement): void {
-  const willMinimize = !container.classList.contains('ai-sidebar-overlay-minimized');
-
-  if (willMinimize) {
-    // 最小化前缓存展开态完整快照
-    setExpandedOverlayState(container, readOverlayStateFromElement(container));
-    container.classList.add('ai-sidebar-overlay-minimized');
-  } else {
-    container.classList.remove('ai-sidebar-overlay-minimized');
-    const expandedState = getExpandedOverlayState(container);
-    if (expandedState) {
-      applyOverlayState(container, { ...expandedState, minimized: false });
-    }
-  }
-
-  updateMinimizeButton(container);
-  saveOverlayState(getPersistedOverlayState(container));
-}
-
-function applyOverlayState(
-  container: HTMLDivElement,
-  state: OverlayState,
-  updateExpandedSnapshot: boolean = true,
-): void {
+function applyOverlayState(container: HTMLDivElement, state: OverlayState): void {
   const normalized = clampOverlayState(state);
 
   container.style.left = `${normalized.left}px`;
@@ -255,18 +184,6 @@ function applyOverlayState(
   container.style.height = `${normalized.height}px`;
   container.style.right = 'auto';
   container.style.bottom = 'auto';
-
-  if (normalized.minimized) {
-    container.classList.add('ai-sidebar-overlay-minimized');
-  } else {
-    container.classList.remove('ai-sidebar-overlay-minimized');
-    // 拖拽过程中不需要每帧写快照，避免卡顿
-    if (updateExpandedSnapshot) {
-      // 仅在展开态更新展开快照，避免最小化时写入 44px
-      setExpandedOverlayState(container, normalized);
-    }
-  }
-  updateMinimizeButton(container);
 }
 
 function bindOverlayInteractions(container: HTMLDivElement): void {
@@ -277,7 +194,6 @@ function bindOverlayInteractions(container: HTMLDivElement): void {
 
   const header = container.querySelector(`#${OVERLAY_HEADER_ID}`) as HTMLDivElement | null;
   const closeBtn = container.querySelector(`#${OVERLAY_CLOSE_ID}`) as HTMLButtonElement | null;
-  const minimizeBtn = container.querySelector(`#${OVERLAY_MINIMIZE_ID}`) as HTMLButtonElement | null;
   const clearBtn = document.getElementById('ai-sidebar-overlay-clear-btn') as HTMLButtonElement | null;
   const settingsBtn = document.getElementById('ai-sidebar-overlay-settings-btn') as HTMLButtonElement | null;
   const iframe = container.querySelector(`#${OVERLAY_IFRAME_ID}`) as HTMLIFrameElement | null;
@@ -295,13 +211,6 @@ function bindOverlayInteractions(container: HTMLDivElement): void {
       if (iframe?.contentWindow) {
         iframe.contentWindow.postMessage({ type: 'OVERLAY_OPEN_SETTINGS' }, '*');
       }
-    });
-  }
-
-  // 最小化按钮：折叠/展开浮窗
-  if (minimizeBtn) {
-    minimizeBtn.addEventListener('click', () => {
-      toggleOverlayMinimize(container);
     });
   }
 
@@ -363,12 +272,11 @@ function bindOverlayInteractions(container: HTMLDivElement): void {
           ...baseState,
           left: startLeft + pendingDeltaX,
           top: startTop + pendingDeltaY,
-          minimized: container.classList.contains('ai-sidebar-overlay-minimized'),
         };
 
-        // 先把元素落位到“松手时的位置”，保证后续吸边动画方向正确
+        // 先把元素落位到”松手时的位置”，保证后续吸边动画方向正确
         const releasedClampedState = clampOverlayState(releasedState);
-        applyOverlayState(container, releasedClampedState, false);
+        applyOverlayState(container, releasedClampedState);
 
         // 拖拽结束后执行吸边并持久化
         const snappedState = snapOverlayState(releasedClampedState);
@@ -407,22 +315,11 @@ function bindOverlayInteractions(container: HTMLDivElement): void {
       document.addEventListener('mousemove', onMouseMove);
       document.addEventListener('mouseup', onMouseUp);
     });
-
-    // 双击标题栏快速最小化/恢复
-    header.addEventListener('dblclick', (event: MouseEvent) => {
-      const target = event.target as HTMLElement;
-      if (target.closest('button')) return;
-      toggleOverlayMinimize(container);
-    });
   }
 
   if (typeof ResizeObserver !== 'undefined') {
     const observer = new ResizeObserver(() => {
-      if (container.classList.contains('ai-sidebar-overlay-minimized')) {
-        return;
-      }
       const currentState = readOverlayStateFromElement(container);
-      setExpandedOverlayState(container, currentState);
       saveOverlayState(currentState);
     });
     observer.observe(container);
@@ -504,14 +401,6 @@ function getOrCreateOverlayContainer(tabId: number): HTMLDivElement {
   settingsBtn.title = '设置';
   settingsBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>`;
 
-  // 最小化按钮（减号图标）
-  const minimizeBtn = document.createElement('button');
-  minimizeBtn.id = OVERLAY_MINIMIZE_ID;
-  minimizeBtn.className = 'ai-sidebar-overlay-action-btn';
-  minimizeBtn.setAttribute('aria-label', '最小化助手');
-  minimizeBtn.title = '最小化助手';
-  minimizeBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/></svg>`;
-
   // 关闭按钮（X 图标）
   const closeBtn = document.createElement('button');
   closeBtn.id = OVERLAY_CLOSE_ID;
@@ -522,7 +411,6 @@ function getOrCreateOverlayContainer(tabId: number): HTMLDivElement {
 
   actions.appendChild(clearBtn);
   actions.appendChild(settingsBtn);
-  actions.appendChild(minimizeBtn);
   actions.appendChild(closeBtn);
   header.appendChild(titleGroup);
   header.appendChild(actions);
@@ -560,29 +448,8 @@ function openAssistantOverlay(tabId: number): void {
     }
   }
 
-  container.classList.remove('ai-sidebar-overlay-minimized');
-  updateMinimizeButton(container);
   container.classList.remove('ai-sidebar-overlay-hidden');
-  saveOverlayState(getPersistedOverlayState(container));
-}
-
-function getPersistedOverlayState(container: HTMLDivElement): OverlayState {
-  const visualState = readOverlayStateFromElement(container);
-  if (!visualState.minimized) {
-    return visualState;
-  }
-
-  const expandedState = getExpandedOverlayState(container);
-  if (!expandedState) {
-    return visualState;
-  }
-
-  return {
-    ...expandedState,
-    left: visualState.left,
-    top: visualState.top,
-    minimized: true,
-  };
+  saveOverlayState(readOverlayStateFromElement(container));
 }
 
 // ==================== 浮窗按钮功能 ====================
@@ -697,24 +564,12 @@ function createFloatButton(): void {
     const isOverlayOpen = overlayContainer && !overlayContainer.classList.contains('ai-sidebar-overlay-hidden');
 
     if (isOverlayOpen) {
-      // 已打开：切换隐藏/展开
-      if (overlayContainer!.classList.contains('ai-sidebar-overlay-minimized')) {
-        // 从最小化恢复
-        toggleOverlayMinimize(overlayContainer!);
-      } else {
-        // 隐藏 overlay
-        overlayContainer!.classList.add('ai-sidebar-overlay-hidden');
-      }
+      // 已打开：隐藏 overlay
+      overlayContainer!.classList.add('ai-sidebar-overlay-hidden');
     } else if (overlayContainer) {
-      // 容器已存在但当前隐藏：仅恢复显示，不再触发首次动作
+      // 容器已存在但当前隐藏：恢复显示
       overlayContainer.classList.remove('ai-sidebar-overlay-hidden');
-
-      // 如果当前是最小化态，则恢复为展开态
-      if (overlayContainer.classList.contains('ai-sidebar-overlay-minimized')) {
-        toggleOverlayMinimize(overlayContainer);
-      }
-
-      saveOverlayState(getPersistedOverlayState(overlayContainer));
+      saveOverlayState(readOverlayStateFromElement(overlayContainer));
     } else {
       // 容器不存在：首次打开，向后台脚本发送消息并按配置执行动作
       const action = floatButtonClickAction === 'open_and_summarize' ? 'summarize' : 'open_sidebar';
