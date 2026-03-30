@@ -10,7 +10,10 @@
       "Bash(node:*)",
       "WebFetch(domain:docs.bigmodel.cn)",
       "Bash(wc -l /Users/yidejia/Project/ai-sidebar/src/**/*.tsx /Users/yidejia/Project/ai-sidebar/src/**/*.ts /Users/yidejia/Project/ai-sidebar/public/*.js 2>/dev/null | tail -1)",
-      "Bash(git:*)"
+      "Bash(git:*)",
+      "Bash(GOPATH=/Users/yidejia/Project npm run lint 2>&1)",
+      "Bash(GOPATH=/Users/yidejia/Project ./node_modules/.bin/eslint . 2>&1)",
+      "Bash(GOPATH=/Users/yidejia/Project npm run build)"
     ],
     "deny": [],
     "ask": []
