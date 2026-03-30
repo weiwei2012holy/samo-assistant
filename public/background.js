@@ -17,33 +17,14 @@ let assistantDisplayMode = 'overlay';
 let assistantWindowId = null;
 
 /**
- * 规范化显示模式，window 迁移为 overlay
+ * 规范化显示模式，确保只返回合法值
  * @param {string | undefined} mode
- * @returns {'sidepanel' | 'overlay'}
+ * @returns {'sidepanel' | 'window' | 'overlay'}
  */
 function normalizeDisplayMode(mode) {
   if (mode === 'sidepanel') return 'sidepanel';
+  if (mode === 'window') return 'window';
   return 'overlay';
-}
-
-/**
- * 将旧的 window 模式持久化迁移为 overlay
- */
-async function migrateWindowModeToOverlay() {
-  try {
-    const data = await chrome.storage.sync.get(SETTINGS_STORAGE_KEY);
-    const settings = data?.[SETTINGS_STORAGE_KEY];
-    if (!settings || settings.assistantDisplayMode !== 'window') return;
-
-    await chrome.storage.sync.set({
-      [SETTINGS_STORAGE_KEY]: {
-        ...settings,
-        assistantDisplayMode: 'overlay',
-      },
-    });
-  } catch (error) {
-    console.error('迁移显示模式失败:', error);
-  }
 }
 
 // 记录用户明确打开过侧边栏的 tab 集合（tab-specific 面板管理的核心）
@@ -67,9 +48,6 @@ const initPromise = chrome.storage.session.get('enabledTabs').then(data => {
 chrome.storage.sync.get(SETTINGS_STORAGE_KEY).then((data) => {
   const saved = data?.[SETTINGS_STORAGE_KEY];
   assistantDisplayMode = normalizeDisplayMode(saved?.assistantDisplayMode);
-  if (saved?.assistantDisplayMode === 'window') {
-    migrateWindowModeToOverlay();
-  }
 });
 
 /** 监听设置变化，实时更新显示模式 */
@@ -78,9 +56,6 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
 
   const nextSettings = changes[SETTINGS_STORAGE_KEY].newValue;
   assistantDisplayMode = normalizeDisplayMode(nextSettings?.assistantDisplayMode);
-  if (nextSettings?.assistantDisplayMode === 'window') {
-    migrateWindowModeToOverlay();
-  }
 });
 
 /**
@@ -215,11 +190,13 @@ function openAssistantSurface(tabId) {
 /**
  * 尝试向前端容器投递任务；失败时保留 pendingTask，等待 GET_PENDING_TASK 拉取
  * @param {Object} task
+ * @param {number | null} tabId - 目标标签页 ID，overlay/window 模式下用于过滤消息
  */
-function dispatchTaskToAssistant(task) {
+function dispatchTaskToAssistant(task, tabId) {
   chrome.runtime.sendMessage({
     type: 'EXECUTE_TASK',
     task,
+    tabId: tabId ?? null,
   }).then(() => {
     pendingTask = null;
   }).catch(() => {
@@ -337,7 +314,7 @@ function sendTaskToAssistant(task, tabId) {
     openAssistantOverlay(tabId)
       .then(() => {
         setTimeout(() => {
-          dispatchTaskToAssistant(task);
+          dispatchTaskToAssistant(task, tabId);
         }, 120);
       })
       .catch((error) => {
@@ -345,7 +322,7 @@ function sendTaskToAssistant(task, tabId) {
         enableSidePanelForTab(tabId);
         chrome.sidePanel.open({ tabId }).then(() => {
           setTimeout(() => {
-            dispatchTaskToAssistant(task);
+            dispatchTaskToAssistant(task, tabId);
           }, 300);
         }).catch((openError) => {
           console.error('回退侧边栏失败:', openError);
@@ -358,7 +335,7 @@ function sendTaskToAssistant(task, tabId) {
     openAssistantWindow(tabId)
       .then(() => {
         setTimeout(() => {
-          dispatchTaskToAssistant(task);
+          dispatchTaskToAssistant(task, tabId);
         }, 150);
       })
       .catch((error) => {
@@ -366,7 +343,7 @@ function sendTaskToAssistant(task, tabId) {
         enableSidePanelForTab(tabId);
         chrome.sidePanel.open({ tabId }).then(() => {
           setTimeout(() => {
-            dispatchTaskToAssistant(task);
+            dispatchTaskToAssistant(task, tabId);
           }, 300);
         }).catch((openError) => {
           console.error('回退侧边栏失败:', openError);
@@ -377,11 +354,11 @@ function sendTaskToAssistant(task, tabId) {
 
   // 同步设置选项，保持用户手势上下文
   enableSidePanelForTab(tabId);
-  
+
   chrome.sidePanel.open({ tabId })
     .then(() => {
       setTimeout(() => {
-        dispatchTaskToAssistant(task);
+        dispatchTaskToAssistant(task, tabId);
       }, 300);
     })
     .catch((error) => {

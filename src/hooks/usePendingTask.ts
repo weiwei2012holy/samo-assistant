@@ -39,6 +39,12 @@ interface UsePendingTaskOptions {
   setPendingAskText: (text: string | null) => void;
   /** 输入框 ref，用于 ask 任务时自动聚焦 */
   textareaRef: RefObject<HTMLTextAreaElement>;
+  /**
+   * 当前容器绑定的 tabId（overlay/window 模式下由 URL 参数传入）。
+   * 设置后，EXECUTE_TASK 消息只处理 tabId 匹配的消息，实现多 tab 隔离。
+   * sidepanel 模式下传 null 不做过滤。
+   */
+  targetTabId?: number | null;
 }
 
 interface UsePendingTaskResult {
@@ -62,6 +68,7 @@ export function usePendingTask({
   summarizePage,
   setPendingAskText,
   textareaRef,
+  targetTabId,
 }: UsePendingTaskOptions): UsePendingTaskResult {
   /** 标记是否已检查过待处理任务，避免重复触发 GET_PENDING_TASK */
   const [pendingTaskChecked, setPendingTaskChecked] = useState(false);
@@ -172,18 +179,26 @@ export function usePendingTask({
 
   // 监听来自 background 的 EXECUTE_TASK 消息（空依赖 → 仅注册一次）
   useEffect(() => {
-    const handleMessage = (message: { type: string; task?: Task }) => {
-      if (message.type === 'EXECUTE_TASK' && message.task) {
-        console.log('收到 EXECUTE_TASK 消息:', message.task.type);
-        // 标记已处理，防止 GET_PENDING_TASK 重复执行同一任务
-        setPendingTaskChecked(true);
-        // 延迟执行，确保页面内容有时间加载
-        setTimeout(() => executeTaskRef.current(message.task!), 100);
+    const handleMessage = (message: { type: string; task?: Task; tabId?: number | null }) => {
+      if (message.type !== 'EXECUTE_TASK' || !message.task) return;
+
+      // overlay/window 模式下，只处理 tabId 匹配的消息，实现多 tab 隔离
+      if (targetTabId !== undefined && targetTabId !== null) {
+        if (message.tabId !== targetTabId) {
+          console.log(`忽略非本 tab 的任务消息: 消息 tabId=${message.tabId}, 当前 tabId=${targetTabId}`);
+          return;
+        }
       }
+
+      console.log('收到 EXECUTE_TASK 消息:', message.task.type);
+      // 标记已处理，防止 GET_PENDING_TASK 重复执行同一任务
+      setPendingTaskChecked(true);
+      // 延迟执行，确保页面内容有时间加载
+      setTimeout(() => executeTaskRef.current(message.task!), 100);
     };
     chrome.runtime.onMessage.addListener(handleMessage);
     return () => chrome.runtime.onMessage.removeListener(handleMessage);
-  }, []);
+  }, [targetTabId]);
 
   // 检查 background 中的待处理任务（侧边栏打开时轮询一次）
   useEffect(() => {

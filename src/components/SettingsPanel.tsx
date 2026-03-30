@@ -378,20 +378,26 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
             <CardHeader className="pb-3">
               <CardTitle className="text-base">打开方式</CardTitle>
               <CardDescription>
-                窗口模式不会挤压页面宽度，侧边栏模式与浏览器原生体验一致
+                选择助手界面的显示形态
               </CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="space-y-2">
               <Select
                 value={assistantDisplayMode}
                 onChange={(e) => {
                   onUpdateAssistantDisplayMode?.(e.target.value as AssistantDisplayMode);
                 }}
                 options={[
-                  { value: 'overlay', label: '页面内浮窗（不挤压页面）' },
-                  { value: 'sidepanel', label: '浏览器侧边栏' },
+                  { value: 'overlay', label: '页面内浮窗（不占用页面空间）' },
+                  { value: 'window', label: '独立窗口（可移至副屏使用）' },
+                  { value: 'sidepanel', label: '浏览器侧边栏（原生体验）' },
                 ]}
               />
+              <p className="text-xs text-muted-foreground">
+                {assistantDisplayMode === 'overlay' && '浮窗悬浮在页面上方，可拖拽和调整大小，不会挤压页面内容'}
+                {assistantDisplayMode === 'window' && '在独立浏览器窗口中打开，适合双屏使用或需要更大空间时'}
+                {assistantDisplayMode === 'sidepanel' && '使用浏览器原生侧边栏，会占用一部分页面宽度'}
+              </p>
             </CardContent>
           </Card>
 

@@ -54,6 +54,10 @@ interface OverlayState {
   width: number;
   height: number;
   minimized: boolean;
+  /** 保存时距右侧视口边缘的距离，用于跨视口尺寸恢复位置 */
+  rightOffset?: number;
+  /** 保存时距底部视口边缘的距离，用于跨视口尺寸恢复位置 */
+  bottomOffset?: number;
 }
 
 function getDefaultOverlayState(): OverlayState {
@@ -76,14 +80,34 @@ function loadOverlayState(): Promise<OverlayState> {
         resolve(getDefaultOverlayState());
         return;
       }
-      resolve(state);
+
+      let { left, top, width, height } = state;
+      const { rightOffset, bottomOffset } = state;
+
+      // 根据保存时的锚点边（哪侧偏移更小即为锚点侧）重新计算坐标，
+      // 使浮窗在不同视口尺寸下仍还原到相对同一侧的位置
+      if (rightOffset !== undefined && rightOffset < left) {
+        left = Math.max(OVERLAY_EDGE_GAP, window.innerWidth - rightOffset - width);
+      }
+      if (bottomOffset !== undefined && bottomOffset < top) {
+        top = Math.max(OVERLAY_EDGE_GAP, window.innerHeight - bottomOffset - height);
+      }
+
+      // minimized 是页面级状态，不跨 Tab 共享，始终以展开态打开
+      resolve({ left, top, width, height, minimized: false });
     });
   });
 }
 
 function saveOverlayState(state: OverlayState): void {
+  // 同时记录右侧和底部偏移，供跨视口尺寸恢复时判断锚点
+  const stateToSave: OverlayState = {
+    ...state,
+    rightOffset: window.innerWidth - state.left - state.width,
+    bottomOffset: window.innerHeight - state.top - state.height,
+  };
   chrome.storage.local.set({
-    [OVERLAY_STATE_STORAGE_KEY]: state,
+    [OVERLAY_STATE_STORAGE_KEY]: stateToSave,
   }, () => {
     if (chrome.runtime.lastError) {
       console.error('保存浮窗状态失败:', chrome.runtime.lastError);
@@ -187,8 +211,16 @@ function updateMinimizeButton(container: HTMLDivElement): void {
   if (!minimizeBtn) return;
 
   const minimized = container.classList.contains('ai-sidebar-overlay-minimized');
-  minimizeBtn.textContent = minimized ? '□' : '−';
-  minimizeBtn.title = minimized ? '恢复助手' : '最小化助手';
+  // 最小化态：显示"恢复"图标（向上箭头）；展开态：显示"最小化"图标（减号）
+  if (minimized) {
+    minimizeBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;stroke-width:2"><path d="M5 15H3a2 2 0 0 1-2-2V3a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v2"/><rect width="14" height="14" x="7" y="7" rx="2" ry="2"/></svg>`;
+    minimizeBtn.title = '恢复助手';
+    minimizeBtn.setAttribute('aria-label', '恢复助手');
+  } else {
+    minimizeBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;stroke-width:2"><path d="M5 12h14"/></svg>`;
+    minimizeBtn.title = '最小化助手';
+    minimizeBtn.setAttribute('aria-label', '最小化助手');
+  }
 }
 
 function toggleOverlayMinimize(container: HTMLDivElement): void {
@@ -245,6 +277,7 @@ function bindOverlayInteractions(container: HTMLDivElement): void {
 
   const header = container.querySelector(`#${OVERLAY_HEADER_ID}`) as HTMLDivElement | null;
   const closeBtn = container.querySelector(`#${OVERLAY_CLOSE_ID}`) as HTMLButtonElement | null;
+  const minimizeBtn = container.querySelector(`#${OVERLAY_MINIMIZE_ID}`) as HTMLButtonElement | null;
   const clearBtn = document.getElementById('ai-sidebar-overlay-clear-btn') as HTMLButtonElement | null;
   const settingsBtn = document.getElementById('ai-sidebar-overlay-settings-btn') as HTMLButtonElement | null;
   const iframe = container.querySelector(`#${OVERLAY_IFRAME_ID}`) as HTMLIFrameElement | null;
@@ -265,9 +298,17 @@ function bindOverlayInteractions(container: HTMLDivElement): void {
     });
   }
 
+  // 最小化按钮：折叠/展开浮窗
+  if (minimizeBtn) {
+    minimizeBtn.addEventListener('click', () => {
+      toggleOverlayMinimize(container);
+    });
+  }
+
+  // 关闭按钮：隐藏整个浮窗
   if (closeBtn) {
     closeBtn.addEventListener('click', () => {
-      toggleOverlayMinimize(container);
+      container.classList.add('ai-sidebar-overlay-hidden');
     });
   }
 
@@ -426,35 +467,65 @@ function getOrCreateOverlayContainer(tabId: number): HTMLDivElement {
   header.id = OVERLAY_HEADER_ID;
   header.className = 'ai-sidebar-overlay-header';
 
+  // 左侧：图标 + 标题
+  const titleGroup = document.createElement('div');
+  titleGroup.className = 'ai-sidebar-overlay-title-group';
+
+  const titleIcon = document.createElement('img');
+  titleIcon.className = 'ai-sidebar-overlay-title-icon';
+  titleIcon.src = chrome.runtime.getURL('icons/icon48.png');
+  titleIcon.alt = '';
+  titleIcon.draggable = false;
+
   const title = document.createElement('span');
   title.className = 'ai-sidebar-overlay-title';
   title.textContent = 'Samo 助手';
 
+  titleGroup.appendChild(titleIcon);
+  titleGroup.appendChild(title);
+
+  // 右侧操作区
   const actions = document.createElement('div');
   actions.className = 'ai-sidebar-overlay-actions';
 
-  // 清空按钮
+  // 清空按钮（循环箭头图标）
   const clearBtn = document.createElement('button');
   clearBtn.id = 'ai-sidebar-overlay-clear-btn';
   clearBtn.className = 'ai-sidebar-overlay-action-btn';
   clearBtn.setAttribute('aria-label', '清空对话');
-  clearBtn.textContent = '⟲';
   clearBtn.title = '清空对话';
+  clearBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>`;
 
-  // 设置按钮
+  // 设置按钮（齿轮图标）
   const settingsBtn = document.createElement('button');
   settingsBtn.id = 'ai-sidebar-overlay-settings-btn';
   settingsBtn.className = 'ai-sidebar-overlay-action-btn';
   settingsBtn.setAttribute('aria-label', '设置');
-  settingsBtn.textContent = '⚙';
   settingsBtn.title = '设置';
+  settingsBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>`;
 
+  // 最小化按钮（减号图标）
+  const minimizeBtn = document.createElement('button');
+  minimizeBtn.id = OVERLAY_MINIMIZE_ID;
+  minimizeBtn.className = 'ai-sidebar-overlay-action-btn';
+  minimizeBtn.setAttribute('aria-label', '最小化助手');
+  minimizeBtn.title = '最小化助手';
+  minimizeBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/></svg>`;
+
+  // 关闭按钮（X 图标）
   const closeBtn = document.createElement('button');
   closeBtn.id = OVERLAY_CLOSE_ID;
-  closeBtn.className = 'ai-sidebar-overlay-action-btn';
-  closeBtn.textContent = '×';
-  closeBtn.title = '最小化';
-  closeBtn.setAttribute('aria-label', '最小化');
+  closeBtn.className = 'ai-sidebar-overlay-action-btn close-btn';
+  closeBtn.setAttribute('aria-label', '关闭助手');
+  closeBtn.title = '关闭助手';
+  closeBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>`;
+
+  actions.appendChild(clearBtn);
+  actions.appendChild(settingsBtn);
+  actions.appendChild(minimizeBtn);
+  actions.appendChild(closeBtn);
+  header.appendChild(titleGroup);
+  header.appendChild(actions);
 
   const iframe = document.createElement('iframe');
   iframe.id = OVERLAY_IFRAME_ID;
@@ -462,12 +533,6 @@ function getOrCreateOverlayContainer(tabId: number): HTMLDivElement {
   iframe.src = buildOverlayUrl(tabId);
   iframe.setAttribute('title', 'Samo 助手');
   iframe.setAttribute('loading', 'eager');
-
-  actions.appendChild(clearBtn);
-  actions.appendChild(settingsBtn);
-  actions.appendChild(closeBtn);
-  header.appendChild(title);
-  header.appendChild(actions);
 
   container.appendChild(header);
   container.appendChild(iframe);
