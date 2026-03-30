@@ -1,55 +1,34 @@
 <!--
 /**
  * @Author wei
- * @Date 2026-02-25
- * @Description 代码库代理协作规范与命令指南
+ * @Date 2026-03-30
+ * @Description AI Sidebar 仓库级代理协作规范
  **/
 -->
 
 # AI Sidebar - AGENTS
 
-面向代理型编码助手的仓库规范与命令清单，所有自动化修改必须遵循此文档。
+本文件是仓库级默认指令，适用于本项目所有目录。
 
-## 项目概览
-- 技术栈：React 18 + TypeScript 5.6 + Vite 6 + Tailwind CSS 3.4
-- Chrome 扩展：Manifest V3
-- 包管理：npm（ES Modules）
+## 项目定位
+- 技术栈：React 18 + TypeScript 5.6 + Vite 6 + Tailwind CSS 3.4。
+- 形态：Chrome 扩展（Manifest V3）+ Side Panel React 应用。
+- 包管理：仅使用 npm。
 
-## 运行与构建命令
-以下命令均来自 `package.json`。
+## Build And Lint
+- 在 `/Users/yidejia/Project` 目录下执行任何命令前，必须先设置：`GOPATH=/Users/yidejia/Project`。
+- 常用命令以 `package.json` 为准：`npm run dev`、`npm run dev:content`、`npm run build`、`npm run lint`、`npm run preview`。
+- 当前仓库无测试脚本（无 `npm test`）。如需验证改动，优先运行 `npm run lint`，必要时补充 `npm run build`。  
 
-```bash
-# 开发模式（热重载）
-npm run dev
+## 架构要点
+- Hook 依赖链保持为：`useSettings -> usePageContent -> useChat(tabId) -> usePendingTask -> useTabManager`。
+- `currentTabId` 应保留在 `src/sidepanel/App.tsx`，用于打破 `useChat` 与 `useTabManager` 的循环依赖。
+- 多 Tab 对话隔离依赖 `src/hooks/useChat.ts` 中的模块级 `Map<number, TabChatState>`，切换 Tab 时需要恢复状态并中断旧请求。
+- AI 协议分层由 `src/services/ai.ts` + `src/config/providers.ts` 统一维护；新增供应商优先在 `PROVIDER_DEFINITIONS` 中扩展。
+- Content Script 源码入口为 `src/content/content.ts`，产物为 `dist/content.js`（IIFE），由 `vite.content.config.ts` 构建。
 
-# 构建生产版本（包含 content 脚本构建与静态资源复制）
-npm run build
-
-# 仅构建 content 脚本（watch）
-npm run dev:content
-
-# 拷贝 public 资源到 dist（build 内部会调用）
-npm run copy-files
-
-# 代码检查
-npm run lint
-
-# 预览构建结果
-npm run preview
-```
-
-## 测试与单测
-- 当前仓库没有测试框架或测试脚本（`package.json` 未定义 `test`）。
-- 因此“单独运行某个测试”目前不适用。
-- 若未来引入测试框架（如 Vitest/Jest），请在此处补充“单测运行方式”。
-
-## 环境要求
-- 在 `/Users/yidejia/Project` 目录下执行命令前必须设置：`GOPATH=/Users/yidejia/Project`。
-- 默认使用 `npm`，不要擅自更换为 `pnpm/yarn`。
-
-## 代码风格与约定
-### 文件头部注释（必须）
-所有源码文件必须包含以下头部注释（Markdown 等文档也应尽量保留）：
+## 代码约定
+- 所有源码文件必须包含统一头部注释：
 
 ```typescript
 /**
@@ -59,79 +38,19 @@ npm run preview
  **/
 ```
 
-### 导入顺序
-1. React/框架核心库
-2. 第三方库
-3. 内部模块（使用 `@/` 路径别名）
-
-示例：
-```typescript
-import React, { useState, useEffect } from 'react';
-import ReactMarkdown from 'react-markdown';
-import { Button } from '@/components/ui/button';
-import { useSettings } from '@/hooks/useSettings';
-```
-
-### 路径别名
-- 使用 `@/` 作为 `src/` 目录别名。
-- 避免深层相对路径（如 `../../..`）。
-
-### 命名约定
-- 组件：PascalCase（文件名 `PascalCase.tsx`）
-- Hooks：`useXxx`，文件名 `useXxx.ts`
-- 服务：camelCase 文件名（如 `ai.ts`、`storage.ts`）
-- 函数/变量：camelCase
-- 常量：UPPER_SNAKE_CASE
-- 类型/接口：PascalCase
-
-### TypeScript 类型
-- 优先使用 `interface` 定义对象类型。
-- 使用 `type` 定义联合/交叉/别名。
-- Props 接口命名：`${ComponentName}Props`。
-- 所有属性需有 JSDoc 注释。
-
-### React 组件规范
-- 函数组件 + Hooks。
-- 组件类型显式声明（如 `React.FC<Props>`）。
-- 需要转发 ref 时使用 `forwardRef` 并设置 `displayName`。
-- 对频繁重渲染组件使用 `memo`（按实际需求）。
-
-### Hooks 规范
-- 自定义 Hook 必须以 `use` 开头。
-- 返回对象包含状态与操作方法。
-- 回调函数使用 `useCallback`；必要时使用 `useMemo/useRef`。
-
-### 错误处理
-- 异步逻辑使用 `try/catch`。
-- `catch` 中不得为空。
-- 使用 `console.error` 记录错误，且需要中文描述。
-- 面向用户的错误需转换为友好文案（如 `setError`）。
-
-### 样式与组件库
-- 使用 Tailwind CSS 工具类。
-- 使用 `cn()` 合并类名（`@/lib/utils`）。
-- 组件风格遵循 shadcn/ui 变量体系。
-
-## Chrome 扩展相关约定
-- `public/background.js` 与 `public/content.js` 为扩展脚本入口。
-- 优先使用 `chrome.storage.sync` 存储用户配置。
-- 跨脚本通信使用 `chrome.runtime.sendMessage`。
+- 导入顺序：框架核心库 -> 第三方库 -> 内部模块（`@/` 别名）。
+- 使用 `@/` 指向 `src/`，避免深层相对路径。
+- TypeScript：对象结构优先 `interface`，联合/交叉使用 `type`。
+- 错误处理：禁止空 `catch`，必须 `console.error('中文错误描述', error)`，并给用户友好提示。
+- 样式：使用 Tailwind 工具类与 `cn()`（`src/lib/utils.ts`）。
 
 ## 禁止事项
 - 禁止 `as any`、`@ts-ignore`、`@ts-expect-error`。
-- 禁止空 `catch` 块。
 - 未经明确许可不得删除文件。
-- 未经明确要求不得提交 git commit。
+- 未经明确要求不得执行 `git commit`。
 
-## Git 提交规范
-- 提交说明使用中文，尽可能详细描述改动内容。
-
-## Cursor / Copilot 规则
-- 未发现 `.cursor/rules/`、`.cursorrules` 或 `.github/copilot-instructions.md`。
-- 若未来添加上述规则，请将其内容同步到本文件并遵守。
-
-## 重要参考文件
-- `package.json`：构建、lint、预览命令来源。
-- `src/hooks/useChat.ts`：Hook 组织、AbortController、错误处理样例。
-- `src/components/SettingsPanel.tsx`：React.FC、Props 命名与 UI 组织样例。
-- `src/services/ai.ts`：服务层抽象与错误处理样例。
+## 链接索引（避免重复维护）
+- 详细架构与模块说明：`CLAUDE.md`
+- 产品功能与安装说明：`README.md`
+- 命令与依赖来源：`package.json`
+- 关键实现参考：`src/sidepanel/App.tsx`、`src/hooks/useChat.ts`、`src/hooks/usePendingTask.ts`、`src/hooks/useTabManager.ts`、`src/services/ai.ts`

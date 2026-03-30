@@ -11,7 +11,14 @@ import { Select } from '@/components/ui/select';
 import { Combobox } from '@/components/ui/combobox';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { ProviderConfig, ModelProvider, OpenRouterModel, QuickQuestion } from '@/types';
+import {
+  ProviderConfig,
+  ModelProvider,
+  OpenRouterModel,
+  QuickQuestion,
+  AssistantDisplayMode,
+  FloatButtonClickAction,
+} from '@/types';
 import { PROVIDER_DEFINITIONS } from '@/config/providers';
 import { aiService } from '@/services/ai';
 import { ArrowLeft, Eye, EyeOff, Save, Check, RefreshCw, Loader2, Plus, Trash2, Pencil, MessageSquare } from 'lucide-react';
@@ -33,6 +40,14 @@ interface SettingsPanelProps {
   quickQuestions?: QuickQuestion[];
   /** 更新常用问题回调 */
   onUpdateQuickQuestions?: (questions: QuickQuestion[]) => Promise<void>;
+  /** 助手打开方式 */
+  assistantDisplayMode?: AssistantDisplayMode;
+  /** 更新助手打开方式 */
+  onUpdateAssistantDisplayMode?: (mode: AssistantDisplayMode) => Promise<void>;
+  /** 浮窗主按钮点击行为 */
+  floatButtonClickAction?: FloatButtonClickAction;
+  /** 更新浮窗主按钮点击行为 */
+  onUpdateFloatButtonClickAction?: (action: FloatButtonClickAction) => Promise<void>;
 }
 
 /**
@@ -47,6 +62,10 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
   onUpdateTranslateShortcut,
   quickQuestions = [],
   onUpdateQuickQuestions,
+  assistantDisplayMode = 'sidepanel',
+  onUpdateAssistantDisplayMode,
+  floatButtonClickAction = 'open',
+  onUpdateFloatButtonClickAction,
 }) => {
   // 表单状态
   const [provider, setProvider] = useState<ModelProvider>(config.provider);
@@ -353,6 +372,51 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
               </p>
             </CardContent>
           </Card>
+
+          {/* 助手打开方式 */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">打开方式</CardTitle>
+              <CardDescription>
+                窗口模式不会挤压页面宽度，侧边栏模式与浏览器原生体验一致
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Select
+                value={assistantDisplayMode}
+                onChange={(e) => {
+                  onUpdateAssistantDisplayMode?.(e.target.value as AssistantDisplayMode);
+                }}
+                options={[
+                  { value: 'overlay', label: '页面内浮窗（不挤压页面）' },
+                  { value: 'sidepanel', label: '浏览器侧边栏' },
+                ]}
+              />
+            </CardContent>
+          </Card>
+
+          {/* 浮窗点击行为 */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">浮窗点击行为</CardTitle>
+              <CardDescription>
+                点击右下角浮窗图标时，直接执行对应动作
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Select
+                value={floatButtonClickAction}
+                onChange={(e) => {
+                  onUpdateFloatButtonClickAction?.(e.target.value as FloatButtonClickAction);
+                }}
+                options={[
+                  { value: 'open', label: '仅打开助手' },
+                  { value: 'open_and_summarize', label: '打开并总结页面' },
+                ]}
+              />
+            </CardContent>
+          </Card>
+
           {/* 常用问题配置 */}
           <Card>
             <CardHeader className="pb-3">

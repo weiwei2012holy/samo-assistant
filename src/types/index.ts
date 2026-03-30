@@ -29,6 +29,16 @@ export interface ProviderConfig {
 export type ProviderConfigMap = Partial<Record<ModelProvider, ProviderConfig>>;
 
 /**
+ * 助手界面打开方式
+ */
+export type AssistantDisplayMode = 'sidepanel' | 'window' | 'overlay';
+
+/**
+ * 浮窗主按钮点击行为
+ */
+export type FloatButtonClickAction = 'open' | 'open_and_summarize';
+
+/**
  * 应用设置
  */
 export interface AppSettings {
@@ -44,6 +54,10 @@ export interface AppSettings {
   translateShortcut?: string;
   /** 常用问题/提示词列表 */
   quickQuestions?: QuickQuestion[];
+  /** 助手界面打开方式 */
+  assistantDisplayMode?: AssistantDisplayMode;
+  /** 浮窗主按钮点击行为 */
+  floatButtonClickAction?: FloatButtonClickAction;
 }
 
 /**

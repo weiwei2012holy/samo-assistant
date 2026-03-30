@@ -7,6 +7,45 @@
 // 存储待处理的任务
 let pendingTask = null;
 
+// 设置存储键
+const SETTINGS_STORAGE_KEY = 'ai_sidebar_settings';
+
+// 当前助手打开模式：sidepanel | window | overlay
+let assistantDisplayMode = 'overlay';
+
+// 助手窗口 ID（窗口模式复用）
+let assistantWindowId = null;
+
+/**
+ * 规范化显示模式，window 迁移为 overlay
+ * @param {string | undefined} mode
+ * @returns {'sidepanel' | 'overlay'}
+ */
+function normalizeDisplayMode(mode) {
+  if (mode === 'sidepanel') return 'sidepanel';
+  return 'overlay';
+}
+
+/**
+ * 将旧的 window 模式持久化迁移为 overlay
+ */
+async function migrateWindowModeToOverlay() {
+  try {
+    const data = await chrome.storage.sync.get(SETTINGS_STORAGE_KEY);
+    const settings = data?.[SETTINGS_STORAGE_KEY];
+    if (!settings || settings.assistantDisplayMode !== 'window') return;
+
+    await chrome.storage.sync.set({
+      [SETTINGS_STORAGE_KEY]: {
+        ...settings,
+        assistantDisplayMode: 'overlay',
+      },
+    });
+  } catch (error) {
+    console.error('迁移显示模式失败:', error);
+  }
+}
+
 // 记录用户明确打开过侧边栏的 tab 集合（tab-specific 面板管理的核心）
 const enabledTabs = new Set();
 
@@ -21,6 +60,26 @@ const initPromise = chrome.storage.session.get('enabledTabs').then(data => {
   if (Array.isArray(data.enabledTabs)) {
     data.enabledTabs.forEach(id => enabledTabs.add(id));
     console.log('从 session storage 恢复 enabledTabs:', [...enabledTabs]);
+  }
+});
+
+/** 从 sync storage 恢复助手显示模式 */
+chrome.storage.sync.get(SETTINGS_STORAGE_KEY).then((data) => {
+  const saved = data?.[SETTINGS_STORAGE_KEY];
+  assistantDisplayMode = normalizeDisplayMode(saved?.assistantDisplayMode);
+  if (saved?.assistantDisplayMode === 'window') {
+    migrateWindowModeToOverlay();
+  }
+});
+
+/** 监听设置变化，实时更新显示模式 */
+chrome.storage.onChanged.addListener((changes, areaName) => {
+  if (areaName !== 'sync' || !changes[SETTINGS_STORAGE_KEY]) return;
+
+  const nextSettings = changes[SETTINGS_STORAGE_KEY].newValue;
+  assistantDisplayMode = normalizeDisplayMode(nextSettings?.assistantDisplayMode);
+  if (nextSettings?.assistantDisplayMode === 'window') {
+    migrateWindowModeToOverlay();
   }
 });
 
@@ -68,6 +127,103 @@ function openSidePanel(tabId) {
   enableSidePanelForTab(tabId);
   chrome.sidePanel.open({ tabId }).catch((error) => {
     console.error('打开侧边栏失败:', error);
+  });
+}
+
+/**
+ * 构建助手窗口 URL（复用 sidepanel.html 页面）
+ * @param {number} tabId
+ * @returns {string}
+ */
+function buildAssistantWindowUrl(tabId) {
+  const url = new URL(chrome.runtime.getURL('sidepanel.html'));
+  url.searchParams.set('mode', 'window');
+  url.searchParams.set('tabId', String(tabId));
+  url.searchParams.set('ts', String(Date.now()));
+  return url.toString();
+}
+
+/**
+ * 打开页面内浮窗（overlay）
+ * @param {number} tabId
+ * @returns {Promise<void>}
+ */
+async function openAssistantOverlay(tabId) {
+  await chrome.tabs.sendMessage(tabId, {
+    type: 'OPEN_ASSISTANT_OVERLAY',
+    tabId,
+  });
+}
+
+/**
+ * 打开或复用助手独立窗口
+ * @param {number} tabId
+ */
+async function openAssistantWindow(tabId) {
+  const targetUrl = buildAssistantWindowUrl(tabId);
+
+  if (assistantWindowId !== null) {
+    try {
+      const existingWindow = await chrome.windows.get(assistantWindowId, { populate: true });
+      const firstTab = existingWindow.tabs?.[0];
+      if (firstTab?.id) {
+        await chrome.tabs.update(firstTab.id, { url: targetUrl, active: true });
+        await chrome.windows.update(assistantWindowId, { focused: true });
+        return;
+      }
+    } catch (error) {
+      assistantWindowId = null;
+      console.warn('助手窗口复用失败，准备新建窗口:', error);
+    }
+  }
+
+  const createdWindow = await chrome.windows.create({
+    url: targetUrl,
+    // 使用 normal 窗口避免类似扩展弹窗的失焦关闭体验
+    type: 'normal',
+    width: 460,
+    height: 760,
+    focused: true,
+  });
+  assistantWindowId = createdWindow.id ?? null;
+}
+
+/**
+ * 根据用户配置打开助手容器
+ * @param {number} tabId
+ */
+function openAssistantSurface(tabId) {
+  if (assistantDisplayMode === 'overlay') {
+    openAssistantOverlay(tabId).catch((error) => {
+      console.error('打开页面内浮窗失败，自动降级为侧边栏:', error);
+      openSidePanel(tabId);
+    });
+    return;
+  }
+
+  if (assistantDisplayMode === 'window') {
+    openAssistantWindow(tabId).catch((error) => {
+      console.error('打开独立窗口失败，自动降级为侧边栏:', error);
+      openSidePanel(tabId);
+    });
+    return;
+  }
+
+  openSidePanel(tabId);
+}
+
+/**
+ * 尝试向前端容器投递任务；失败时保留 pendingTask，等待 GET_PENDING_TASK 拉取
+ * @param {Object} task
+ */
+function dispatchTaskToAssistant(task) {
+  chrome.runtime.sendMessage({
+    type: 'EXECUTE_TASK',
+    task,
+  }).then(() => {
+    pendingTask = null;
+  }).catch(() => {
+    console.log('助手容器未准备好，任务将在初始化时执行');
   });
 }
 
@@ -132,7 +288,9 @@ chrome.tabs.onCreated.addListener(async (tab) => {
   if (!tab.id) return;
   try {
     await disableSidePanelForTab(tab.id);
-  } catch (e) {}
+  } catch (e) {
+    console.error('新标签页禁用侧边栏失败:', e);
+  }
 });
 
 // 监听标签页切换
@@ -146,25 +304,76 @@ chrome.tabs.onActivated.addListener(async (activeInfo) => {
   if (!enabledTabs.has(tabId)) {
     try {
       await disableSidePanelForTab(tabId);
-    } catch (e) {}
+    } catch (e) {
+      console.error('切换标签页后禁用侧边栏失败:', e);
+    }
   }
   // 如果在集合中，Chrome 会自动恢复显示侧边栏
+});
+
+// 助手窗口关闭后清理复用状态
+chrome.windows.onRemoved.addListener((windowId) => {
+  if (windowId === assistantWindowId) {
+    assistantWindowId = null;
+  }
 });
 
 // 点击扩展图标时打开侧边栏
 chrome.action.onClicked.addListener((tab) => {
   if (tab.id) {
-    openSidePanel(tab.id);
+    openAssistantSurface(tab.id);
   }
 });
 
 /**
- * 向侧边栏发送任务（必须在用户手势的同步上下文中调用）
+ * 向助手容器发送任务（必须在用户手势的同步上下文中调用）
  * @param {Object} task - 任务对象
  * @param {number} tabId - 标签页 ID
  */
-function sendTaskToSidepanel(task, tabId) {
+function sendTaskToAssistant(task, tabId) {
   pendingTask = task;
+
+  if (assistantDisplayMode === 'overlay') {
+    openAssistantOverlay(tabId)
+      .then(() => {
+        setTimeout(() => {
+          dispatchTaskToAssistant(task);
+        }, 120);
+      })
+      .catch((error) => {
+        console.error('浮窗模式打开失败，回退侧边栏:', error);
+        enableSidePanelForTab(tabId);
+        chrome.sidePanel.open({ tabId }).then(() => {
+          setTimeout(() => {
+            dispatchTaskToAssistant(task);
+          }, 300);
+        }).catch((openError) => {
+          console.error('回退侧边栏失败:', openError);
+        });
+      });
+    return;
+  }
+
+  if (assistantDisplayMode === 'window') {
+    openAssistantWindow(tabId)
+      .then(() => {
+        setTimeout(() => {
+          dispatchTaskToAssistant(task);
+        }, 150);
+      })
+      .catch((error) => {
+        console.error('窗口模式打开失败，回退侧边栏:', error);
+        enableSidePanelForTab(tabId);
+        chrome.sidePanel.open({ tabId }).then(() => {
+          setTimeout(() => {
+            dispatchTaskToAssistant(task);
+          }, 300);
+        }).catch((openError) => {
+          console.error('回退侧边栏失败:', openError);
+        });
+      });
+    return;
+  }
 
   // 同步设置选项，保持用户手势上下文
   enableSidePanelForTab(tabId);
@@ -172,14 +381,7 @@ function sendTaskToSidepanel(task, tabId) {
   chrome.sidePanel.open({ tabId })
     .then(() => {
       setTimeout(() => {
-        chrome.runtime.sendMessage({
-          type: 'EXECUTE_TASK',
-          task: task
-        }).then(() => {
-          pendingTask = null;
-        }).catch(() => {
-          console.log('侧边栏未准备好，任务将在初始化时执行');
-        });
+        dispatchTaskToAssistant(task);
       }, 300);
     })
     .catch((error) => {
@@ -217,7 +419,7 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
       return;
   }
 
-  sendTaskToSidepanel({
+  sendTaskToAssistant({
     type: taskType,
     text: selectedText,
     prompt: prompt,
@@ -256,9 +458,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (!tab?.id) return;
 
     if (message.action === 'open_sidebar') {
-      openSidePanel(tab.id);
+      openAssistantSurface(tab.id);
     } else if (message.action === 'summarize') {
-      sendTaskToSidepanel({
+      sendTaskToAssistant({
         type: 'summarize_page',
         prompt: '请总结这个页面的内容',
         timestamp: Date.now()
@@ -270,6 +472,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   // 侧边栏通知当前 tab 已打开
   if (message.type === 'SIDEPANEL_TAB_ACTIVE') {
+    if (assistantDisplayMode !== 'sidepanel') {
+      sendResponse({ success: true });
+      return true;
+    }
+
     const tabId = message.tabId;
     if (tabId) {
       enabledTabs.add(tabId);
