@@ -17,8 +17,8 @@
 
 /* 主按钮 */
 .ai-sidebar-float-main {
-  width: 48px;
-  height: 48px;
+  width: 46px;
+  height: 46px;
   border-radius: 50%;
   border: none;
   background: transparent;
@@ -30,7 +30,7 @@
   transition: all 0.3s ease;
   outline: none;
   padding: 0;
-  overflow: hidden;
+  overflow: visible;
   -webkit-user-drag: none;
 }
 
@@ -43,13 +43,109 @@
   -webkit-user-drag: none;
 }
 
+/* SVG 萨摩耶图标：用 !important 防止 Twitter 等网站的全局 svg 样式覆盖 */
+.ai-sidebar-samoyed {
+  width: 46px !important;
+  height: 46px !important;
+  min-width: 46px !important;
+  min-height: 46px !important;
+  pointer-events: none;
+  display: block !important;
+}
+
+/* 睡觉状态：激活时隐藏 */
+.ai-sidebar-samoyed-sleep { display: block; }
+.ai-sidebar-float-main.active .ai-sidebar-samoyed-sleep { display: none; }
+
+/* 清醒状态：默认隐藏，激活时显示 */
+.ai-sidebar-samoyed-awake { display: none; }
+.ai-sidebar-float-main.active .ai-sidebar-samoyed-awake { display: block; }
+
+/* 睡觉时 Zzz 上浮消散 */
+@keyframes ai-sidebar-zzz {
+  0%   { opacity: 0;   transform: translate(0, 0)   scale(0.6); }
+  20%  { opacity: 0.9; }
+  80%  { opacity: 0.6; }
+  100% { opacity: 0;   transform: translate(6px, -12px) scale(1); }
+}
+.ai-sidebar-zzz-1 { animation: ai-sidebar-zzz 2.4s ease-out infinite; }
+.ai-sidebar-zzz-2 { animation: ai-sidebar-zzz 2.4s ease-out 0.8s infinite; }
+.ai-sidebar-zzz-3 { animation: ai-sidebar-zzz 2.4s ease-out 1.6s infinite; }
+
+/* 清醒时眨眼 */
+@keyframes ai-sidebar-blink-eye {
+  0%, 90%, 100% { transform: scaleY(1); }
+  95%           { transform: scaleY(0.08); }
+}
+.ai-sidebar-eye-l,
+.ai-sidebar-eye-r {
+  transform-origin: center;
+  animation: ai-sidebar-blink-eye 3.5s ease-in-out infinite;
+}
+.ai-sidebar-eye-r { animation-delay: 0.05s; }
+
+/* 清醒时舌头左右摇摆 */
+@keyframes ai-sidebar-tongue-wag {
+  0%, 100% { transform: rotate(-8deg) translateX(0); }
+  50%       { transform: rotate(8deg)  translateX(1px); }
+}
+.ai-sidebar-tongue {
+  transform-origin: top center;
+  animation: ai-sidebar-tongue-wag 0.6s ease-in-out infinite;
+}
+
+/* 清醒时耳朵轻抖 */
+@keyframes ai-sidebar-ear-wiggle {
+  0%, 100% { transform: rotate(0deg); }
+  30%       { transform: rotate(-6deg); }
+  60%       { transform: rotate(4deg); }
+}
+.ai-sidebar-ear-l { transform-origin: bottom right; animation: ai-sidebar-ear-wiggle 1.2s ease-in-out infinite; }
+.ai-sidebar-ear-r { transform-origin: bottom left;  animation: ai-sidebar-ear-wiggle 1.2s ease-in-out 0.3s infinite; }
+
 .ai-sidebar-float-main:hover {
   transform: scale(1.1);
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
 }
 
 .ai-sidebar-float-main.active {
-  transform: rotate(45deg);
+  /* 呼吸效果由 SVG 内部的 .ai-sidebar-breathe-ring 元素实现，无需 box-shadow */
+}
+
+.ai-sidebar-float-main.active:hover {
+  transform: scale(1.1);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
+}
+
+/* SVG 内部呼吸光晕：blur 柔化边缘，scale + opacity 形成渐隐渐出效果 */
+@keyframes ai-sidebar-btn-breathe {
+  0%, 100% { opacity: 0;   transform: scale(1);    }
+  40%       { opacity: 0.8; transform: scale(1.08); }
+  60%       { opacity: 0.8; transform: scale(1.08); }
+}
+.ai-sidebar-breathe-ring {
+  display: none;
+  fill: rgba(14, 165, 233, 0.25);
+  stroke: rgba(14, 165, 233, 0.6);
+  stroke-width: 1.5;
+  transform-origin: 24px 24px;
+  filter: blur(2px);
+}
+.ai-sidebar-float-main.active .ai-sidebar-breathe-ring {
+  display: block;
+  animation: ai-sidebar-btn-breathe 2.4s ease-in-out infinite;
+}
+
+/* 点击按压弹跳动画 */
+@keyframes ai-sidebar-btn-press {
+  0%   { transform: scale(1); }
+  25%  { transform: scale(0.85); }
+  65%  { transform: scale(1.08); }
+  100% { transform: scale(1); }
+}
+
+.ai-sidebar-float-main.pressing {
+  animation: ai-sidebar-btn-press 0.35s cubic-bezier(0.36, 0.07, 0.19, 0.97) forwards;
 }
 
 .ai-sidebar-float-main svg {

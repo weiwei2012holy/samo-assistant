@@ -209,49 +209,52 @@ chrome.runtime.onInstalled.addListener(() => {
   // 禁用默认面板，防止新 tab 自动显示侧边栏
   chrome.sidePanel.setOptions({ enabled: false });
 
-  // 创建右键菜单
-  chrome.contextMenus.create({
-    id: 'ai-sidebar-parent',
-    title: 'Samo 助手',
-    contexts: ['selection']
-  });
+  // 先移除现有菜单，防止重复创建报错
+  chrome.contextMenus.removeAll(() => {
+    // 创建右键菜单
+    chrome.contextMenus.create({
+      id: 'ai-sidebar-parent',
+      title: 'Samo 助手',
+      contexts: ['selection']
+    });
 
-  chrome.contextMenus.create({
-    id: 'ai-translate',
-    parentId: 'ai-sidebar-parent',
-    title: '翻译选中内容',
-    contexts: ['selection']
-  });
+    chrome.contextMenus.create({
+      id: 'ai-translate',
+      parentId: 'ai-sidebar-parent',
+      title: '翻译选中内容',
+      contexts: ['selection']
+    });
 
-  chrome.contextMenus.create({
-    id: 'ai-explain',
-    parentId: 'ai-sidebar-parent',
-    title: '解释选中内容',
-    contexts: ['selection']
-  });
+    chrome.contextMenus.create({
+      id: 'ai-explain',
+      parentId: 'ai-sidebar-parent',
+      title: '解释选中内容',
+      contexts: ['selection']
+    });
 
-  chrome.contextMenus.create({
-    id: 'ai-summarize-selection',
-    parentId: 'ai-sidebar-parent',
-    title: '总结选中内容',
-    contexts: ['selection']
-  });
+    chrome.contextMenus.create({
+      id: 'ai-summarize-selection',
+      parentId: 'ai-sidebar-parent',
+      title: '总结选中内容',
+      contexts: ['selection']
+    });
 
-  chrome.contextMenus.create({
-    id: 'ai-separator',
-    parentId: 'ai-sidebar-parent',
-    type: 'separator',
-    contexts: ['selection']
-  });
+    chrome.contextMenus.create({
+      id: 'ai-separator',
+      parentId: 'ai-sidebar-parent',
+      type: 'separator',
+      contexts: ['selection']
+    });
 
-  chrome.contextMenus.create({
-    id: 'ai-ask',
-    parentId: 'ai-sidebar-parent',
-    title: '在侧边栏中提问',
-    contexts: ['selection']
-  });
+    chrome.contextMenus.create({
+      id: 'ai-ask',
+      parentId: 'ai-sidebar-parent',
+      title: '在侧边栏中提问',
+      contexts: ['selection']
+    });
 
-  console.log('Samo 助手扩展已安装，右键菜单已创建');
+    console.log('Samo 助手扩展已安装，右键菜单已创建');
+  });
 });
 
 // 监听标签页关闭，清理状态
