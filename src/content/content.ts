@@ -214,10 +214,11 @@ function bindOverlayInteractions(container: HTMLDivElement): void {
     });
   }
 
-  // 关闭按钮：隐藏整个浮窗
+  // 关闭按钮：隐藏整个浮窗，并同步重置浮窗 ICON 的旋转状态
   if (closeBtn) {
     closeBtn.addEventListener('click', () => {
       container.classList.add('ai-sidebar-overlay-hidden');
+      document.querySelector<HTMLButtonElement>('.ai-sidebar-float-main')?.classList.remove('active');
     });
   }
 
@@ -328,6 +329,7 @@ function bindOverlayInteractions(container: HTMLDivElement): void {
   window.addEventListener('keydown', (event: KeyboardEvent) => {
     if (event.key === 'Escape') {
       container.classList.add('ai-sidebar-overlay-hidden');
+      document.querySelector<HTMLButtonElement>('.ai-sidebar-float-main')?.classList.remove('active');
     }
   });
 
@@ -466,17 +468,79 @@ function createFloatButton(): void {
   floatContainer.id = 'ai-sidebar-float-btn';
   floatContainer.className = 'ai-sidebar-float-container';
 
-  // 主按钮 - 使用萨摩耶图标 (48x48)
+  // 主按钮 - 卡通萨摩耶 SVG（两状态：睡觉 / 清醒）
   const mainBtn = document.createElement('button');
   mainBtn.className = 'ai-sidebar-float-main';
   mainBtn.draggable = false;
-  mainBtn.innerHTML = `<img src="data:image/png;base64,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" alt="AI 助手">`;
+  mainBtn.innerHTML = `
+<svg class="ai-sidebar-samoyed" width="46" height="46" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg" overflow="visible">
+  <!-- ===== 睡觉状态（默认显示） ===== -->
+  <g class="ai-sidebar-samoyed-sleep">
+    <!-- 耳朵（溢出顶部，画在脸下面） -->
+    <ellipse cx="10" cy="6"  rx="9" ry="12" fill="#dde4ff" stroke="#b8c4ee" stroke-width="1" transform="rotate(-20,10,6)"/>
+    <ellipse cx="38" cy="6"  rx="9" ry="12" fill="#dde4ff" stroke="#b8c4ee" stroke-width="1" transform="rotate(20,38,6)"/>
+    <ellipse cx="10" cy="7"  rx="4.5" ry="7" fill="#ffc8d4" transform="rotate(-20,10,7)"/>
+    <ellipse cx="38" cy="7"  rx="4.5" ry="7" fill="#ffc8d4" transform="rotate(20,38,7)"/>
+    <!-- 脸：填满 viewBox，无外框 -->
+    <circle cx="24" cy="24" r="23" fill="#f5f7ff"/>
+    <!-- 闭眼 -->
+    <path d="M9 23 Q16 29 23 23"  stroke="#5a6a9a" stroke-width="2.8" stroke-linecap="round" fill="none"/>
+    <path d="M25 23 Q32 29 39 23" stroke="#5a6a9a" stroke-width="2.8" stroke-linecap="round" fill="none"/>
+    <!-- 鼻子 -->
+    <ellipse cx="24" cy="31" rx="6" ry="4" fill="#8090c0"/>
+    <ellipse cx="22" cy="30" rx="2" ry="1.3" fill="#a0b0d8" opacity="0.6"/>
+    <!-- 嘴 -->
+    <path d="M14 37 Q24 44 34 37" stroke="#8090c0" stroke-width="2.2" stroke-linecap="round" fill="none"/>
+    <!-- 腮红 -->
+    <ellipse cx="8"  cy="35" rx="6.5" ry="4.5" fill="#ffb3c6" opacity="0.5"/>
+    <ellipse cx="40" cy="35" rx="6.5" ry="4.5" fill="#ffb3c6" opacity="0.5"/>
+    <!-- Zzz -->
+    <text class="ai-sidebar-zzz-1" x="38" y="20" font-size="7"  font-weight="bold" fill="#8090c0" font-family="sans-serif">z</text>
+    <text class="ai-sidebar-zzz-2" x="42" y="12" font-size="9"  font-weight="bold" fill="#8090c0" font-family="sans-serif">z</text>
+    <text class="ai-sidebar-zzz-3" x="46" y="2"  font-size="11" font-weight="bold" fill="#8090c0" font-family="sans-serif">Z</text>
+  </g>
+
+  <!-- ===== 清醒状态（激活时显示） ===== -->
+  <g class="ai-sidebar-samoyed-awake">
+    <!-- 呼吸圈：贴着脸圆，激活时显示 -->
+    <circle class="ai-sidebar-breathe-ring" cx="24" cy="24" r="24"/>
+    <!-- 耳朵 -->
+    <ellipse class="ai-sidebar-ear-l" cx="10" cy="6"  rx="9" ry="12" fill="#ffeedd" stroke="#e8c8a0" stroke-width="1" transform="rotate(-20,10,6)"/>
+    <ellipse class="ai-sidebar-ear-r" cx="38" cy="6"  rx="9" ry="12" fill="#ffeedd" stroke="#e8c8a0" stroke-width="1" transform="rotate(20,38,6)"/>
+    <ellipse cx="10" cy="7"  rx="4.5" ry="7" fill="#ffc8d4" transform="rotate(-20,10,7)"/>
+    <ellipse cx="38" cy="7"  rx="4.5" ry="7" fill="#ffc8d4" transform="rotate(20,38,7)"/>
+    <!-- 脸 -->
+    <circle cx="24" cy="24" r="23" fill="#fffaf5"/>
+    <!-- 眼睛左 -->
+    <g class="ai-sidebar-eye-l">
+      <circle cx="15" cy="24" r="6.5" fill="white"/>
+      <circle cx="15" cy="24" r="4"   fill="#1a2a4a"/>
+      <circle cx="17" cy="22" r="1.5" fill="white"/>
+    </g>
+    <!-- 眼睛右 -->
+    <g class="ai-sidebar-eye-r">
+      <circle cx="33" cy="24" r="6.5" fill="white"/>
+      <circle cx="33" cy="24" r="4"   fill="#1a2a4a"/>
+      <circle cx="35" cy="22" r="1.5" fill="white"/>
+    </g>
+    <!-- 鼻子 -->
+    <ellipse cx="24" cy="32" rx="6" ry="4" fill="#6a5040"/>
+    <ellipse cx="22" cy="31" rx="2" ry="1.3" fill="#8a7060" opacity="0.6"/>
+    <!-- 嘴 -->
+    <path d="M14 37 Q24 42 34 37" stroke="#6a5040" stroke-width="2.2" stroke-linecap="round" fill="none"/>
+    <!-- 舌头 -->
+    <g class="ai-sidebar-tongue">
+      <ellipse cx="24" cy="45"   rx="5" ry="5.5" fill="#ff6080"/>
+      <ellipse cx="24" cy="46.5" rx="5" ry="3.5" fill="#ff6080"/>
+      <line x1="24" y1="40" x2="24" y2="50" stroke="#d04060" stroke-width="1.8"/>
+    </g>
+    <!-- 腮红 -->
+    <ellipse cx="8"  cy="35" rx="6.5" ry="4.5" fill="#ffb3c6" opacity="0.6"/>
+    <ellipse cx="40" cy="35" rx="6.5" ry="4.5" fill="#ffb3c6" opacity="0.6"/>
+  </g>
+</svg>`;
   mainBtn.title = 'Samo 助手';
   mainBtn.setAttribute('aria-label', 'Samo 助手');
-  const mainBtnImage = mainBtn.querySelector('img');
-  if (mainBtnImage) {
-    mainBtnImage.draggable = false;
-  }
 
   floatContainer.appendChild(mainBtn);
 
@@ -559,19 +623,30 @@ function createFloatButton(): void {
 
     e.stopPropagation();
 
+    // 触发按压弹跳动画（先移除再重新添加，确保快速连点时也能重启动画）
+    mainBtn.classList.remove('pressing');
+    void mainBtn.offsetWidth; // 强制 reflow，使动画重置
+    mainBtn.classList.add('pressing');
+    mainBtn.addEventListener('animationend', () => {
+      mainBtn.classList.remove('pressing');
+    }, { once: true });
+
     // 检查 overlay 当前可见状态
     const overlayContainer = document.getElementById(OVERLAY_CONTAINER_ID) as HTMLDivElement | null;
     const isOverlayOpen = overlayContainer && !overlayContainer.classList.contains('ai-sidebar-overlay-hidden');
 
     if (isOverlayOpen) {
-      // 已打开：隐藏 overlay
+      // 已打开：隐藏 overlay，按钮恢复无光晕状态
       overlayContainer!.classList.add('ai-sidebar-overlay-hidden');
+      mainBtn.classList.remove('active');
     } else if (overlayContainer) {
-      // 容器已存在但当前隐藏：恢复显示
+      // 容器已存在但当前隐藏：恢复显示，按钮显示蓝色光晕
       overlayContainer.classList.remove('ai-sidebar-overlay-hidden');
+      mainBtn.classList.add('active');
       saveOverlayState(readOverlayStateFromElement(overlayContainer));
     } else {
       // 容器不存在：首次打开，向后台脚本发送消息并按配置执行动作
+      mainBtn.classList.add('active');
       const action = floatButtonClickAction === 'open_and_summarize' ? 'summarize' : 'open_sidebar';
       chrome.runtime.sendMessage({ type: 'FLOAT_ACTION', action });
     }
@@ -1035,7 +1110,8 @@ function findBlockParent(element: Element): Element {
 function updateTranslationContent(container: HTMLElement, content: string): void {
   const contentEl = container.querySelector('.ai-sidebar-translation-content');
   if (contentEl) {
-    contentEl.textContent = content;
+    // 去除首尾空白/换行，避免模型返回的前导换行在 pre-wrap 下渲染为空行
+    contentEl.textContent = content.trim();
   }
   container.classList.remove('ai-sidebar-translation-loading');
 }
