@@ -249,6 +249,7 @@
   height: min(80vh, 800px);
   z-index: 2147483645;
   overflow: hidden;
+  border-radius: 14px;
   /* 多层阴影：外层环境阴影 + 内层高光 */
   box-shadow:
     0 8px 32px rgba(0, 0, 0, 0.18),
@@ -260,9 +261,9 @@
   -webkit-backdrop-filter: blur(20px) saturate(180%);
   border: 1px solid rgba(0, 0, 0, 0.08);
   transition: opacity 0.22s cubic-bezier(0.4, 0, 0.2, 1),
-              transform 0.22s cubic-bezier(0.4, 0, 0.2, 1),
-              box-shadow 0.22s ease;
-  resize: both;
+              transform 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+  /* box-shadow 不参与过渡，避免松手时出现阴影收缩的奇怪动画 */
+  resize: none;
   min-width: 300px;
   min-height: 400px;
   will-change: transform;
@@ -295,6 +296,12 @@
   transition: top 0.12s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
 
+/* 越出视口时的回弹吸附动画（X、Y 轴同时过渡） */
+.ai-sidebar-overlay-snapping {
+  transition: left 0.22s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+              top 0.22s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
 .ai-sidebar-overlay-hidden {
   opacity: 0;
   pointer-events: none;
@@ -308,6 +315,27 @@
   background: transparent;
   pointer-events: auto;
   display: block;
+}
+
+/* resize 时禁用 iframe 事件，保证拖拽手柄可响应 */
+.ai-sidebar-overlay-resizing .ai-sidebar-overlay-iframe {
+  pointer-events: none;
+}
+
+/* 自定义右下角 resize 手柄 */
+.ai-sidebar-overlay-resize-handle {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 18px;
+  height: 18px;
+  cursor: se-resize;
+  z-index: 10;
+  /* 三角形小指示点 */
+  background:
+    radial-gradient(circle, rgba(0,0,0,0.25) 1.5px, transparent 1.5px) 12px 12px / 1px 1px no-repeat,
+    radial-gradient(circle, rgba(0,0,0,0.25) 1.5px, transparent 1.5px) 8px  12px / 1px 1px no-repeat,
+    radial-gradient(circle, rgba(0,0,0,0.25) 1.5px, transparent 1.5px) 12px  8px / 1px 1px no-repeat;
 }
 
 /* 标题栏 */
@@ -447,6 +475,57 @@
     background: rgba(239, 68, 68, 0.15);
     color: #f87171;
   }
+}
+
+/* 页面背景为深色时，JS 检测后主动注入此类（覆盖"系统浅色但网站深色"的场景） */
+.ai-sidebar-overlay-dark.ai-sidebar-overlay-container {
+  background: rgba(26, 26, 28, 0.96);
+  border-color: rgba(255, 255, 255, 0.10);
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.45),
+    0 2px 8px rgba(0, 0, 0, 0.30),
+    0 0 0 1px rgba(255, 255, 255, 0.04) inset;
+}
+
+.ai-sidebar-overlay-dark.ai-sidebar-overlay-container:focus-within {
+  box-shadow:
+    0 12px 40px rgba(0, 0, 0, 0.55),
+    0 4px 12px rgba(0, 0, 0, 0.35),
+    0 0 0 1px rgba(255, 255, 255, 0.06) inset;
+}
+
+.ai-sidebar-overlay-dark .ai-sidebar-overlay-header {
+  background: linear-gradient(
+    to bottom,
+    rgba(40, 40, 44, 0.98),
+    rgba(34, 34, 38, 0.95)
+  );
+  border-bottom-color: rgba(255, 255, 255, 0.08);
+}
+
+.ai-sidebar-overlay-dark .ai-sidebar-overlay-title {
+  color: #f3f4f6;
+}
+
+.ai-sidebar-overlay-dark .ai-sidebar-overlay-action-btn {
+  color: #9ca3af;
+}
+
+.ai-sidebar-overlay-dark .ai-sidebar-overlay-action-btn:hover {
+  background: rgba(255, 255, 255, 0.09);
+  color: #f9fafb;
+}
+
+.ai-sidebar-overlay-dark .ai-sidebar-overlay-action-btn.close-btn:hover {
+  background: rgba(239, 68, 68, 0.15);
+  color: #f87171;
+}
+
+.ai-sidebar-overlay-dark .ai-sidebar-overlay-resize-handle {
+  background:
+    radial-gradient(circle, rgba(255,255,255,0.20) 1.5px, transparent 1.5px) 12px 12px / 1px 1px no-repeat,
+    radial-gradient(circle, rgba(255,255,255,0.20) 1.5px, transparent 1.5px) 8px  12px / 1px 1px no-repeat,
+    radial-gradient(circle, rgba(255,255,255,0.20) 1.5px, transparent 1.5px) 12px  8px / 1px 1px no-repeat;
 }
 
 /* 响应式：小屏幕占满整屏 */

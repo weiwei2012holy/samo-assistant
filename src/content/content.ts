@@ -44,7 +44,6 @@ const OVERLAY_CLOSE_ID = 'ai-sidebar-overlay-close';
 const OVERLAY_HEADER_ID = 'ai-sidebar-overlay-header';
 const OVERLAY_STATE_STORAGE_KEY = 'ai_sidebar_overlay_state';
 const OVERLAY_EDGE_GAP = 6;
-const OVERLAY_SNAP_THRESHOLD = 24;
 
 interface OverlayState {
   left: number;
@@ -136,33 +135,39 @@ function clampOverlayState(state: OverlayState): OverlayState {
 }
 
 /**
- * 拖拽结束后吸附到屏幕边缘，提升停靠体验
+ * 检测页面是否为深色主题
+ * 同时考虑系统偏好和页面背景色，解决"网站深色但系统为浅色"的场景
  */
-function snapOverlayState(state: OverlayState): OverlayState {
-  const normalized = clampOverlayState(state);
-  const rightGap = window.innerWidth - (normalized.left + normalized.width);
-  const bottomGap = window.innerHeight - (normalized.top + normalized.height);
-
-  let snappedLeft = normalized.left;
-  let snappedTop = normalized.top;
-
-  if (Math.abs(normalized.left - OVERLAY_EDGE_GAP) <= OVERLAY_SNAP_THRESHOLD) {
-    snappedLeft = OVERLAY_EDGE_GAP;
-  } else if (Math.abs(rightGap - OVERLAY_EDGE_GAP) <= OVERLAY_SNAP_THRESHOLD) {
-    snappedLeft = Math.max(OVERLAY_EDGE_GAP, window.innerWidth - normalized.width - OVERLAY_EDGE_GAP);
+function isPageDarkTheme(): boolean {
+  // 优先采用系统媒体查询
+  if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+    return true;
   }
 
-  if (Math.abs(normalized.top - OVERLAY_EDGE_GAP) <= OVERLAY_SNAP_THRESHOLD) {
-    snappedTop = OVERLAY_EDGE_GAP;
-  } else if (Math.abs(bottomGap - OVERLAY_EDGE_GAP) <= OVERLAY_SNAP_THRESHOLD) {
-    snappedTop = Math.max(OVERLAY_EDGE_GAP, window.innerHeight - normalized.height - OVERLAY_EDGE_GAP);
+  // 读取 html/body 的背景色（跳过透明值）
+  for (const el of [document.documentElement, document.body]) {
+    const bg = window.getComputedStyle(el).backgroundColor;
+    if (!bg || bg === 'rgba(0, 0, 0, 0)' || bg === 'transparent') continue;
+
+    const match = bg.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+    if (!match) continue;
+
+    const r = parseInt(match[1]);
+    const g = parseInt(match[2]);
+    const b = parseInt(match[3]);
+    // 用感知亮度公式判断，< 0.5 为深色背景
+    const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+    return luminance < 0.5;
   }
 
-  return {
-    ...normalized,
-    left: snappedLeft,
-    top: snappedTop,
-  };
+  return false;
+}
+
+/**
+ * 根据页面主题更新浮窗容器的深色类
+ */
+function updateOverlayDarkTheme(container: HTMLDivElement): void {
+  container.classList.toggle('ai-sidebar-overlay-dark', isPageDarkTheme());
 }
 
 function readOverlayStateFromElement(container: HTMLDivElement): OverlayState {
@@ -230,27 +235,30 @@ function bindOverlayInteractions(container: HTMLDivElement): void {
 
       event.preventDefault();
       const rect = container.getBoundingClientRect();
-      const startX = event.clientX;
-      const startY = event.clientY;
-      const startLeft = rect.left;
-      const startTop = rect.top;
-      const baseState = readOverlayStateFromElement(container);
-      let pendingDeltaX = 0;
-      let pendingDeltaY = 0;
+      const dragStartClientX = event.clientX;
+      const dragStartClientY = event.clientY;
+      const dragStartLeft = rect.left;
+      const dragStartTop = rect.top;
+      let pendingLeft = dragStartLeft;
+      let pendingTop = dragStartTop;
       let rafId: number | null = null;
 
-      container.classList.remove('ai-sidebar-overlay-snapping-x');
-      container.classList.remove('ai-sidebar-overlay-snapping-y');
+      // 清除可能残留的吸附动画类
+      container.classList.remove('ai-sidebar-overlay-snapping');
       container.classList.add('ai-sidebar-overlay-dragging');
 
+      // 使用 RAF 节流：直接更新 left/top，避免 transform 的视觉跳变
       const flushDragFrame = (): void => {
         rafId = null;
-        container.style.transform = `translate3d(${pendingDeltaX}px, ${pendingDeltaY}px, 0)`;
+        container.style.left = `${pendingLeft}px`;
+        container.style.top = `${pendingTop}px`;
+        container.style.right = 'auto';
+        container.style.bottom = 'auto';
       };
 
       const onMouseMove = (moveEvent: MouseEvent): void => {
-        pendingDeltaX = moveEvent.clientX - startX;
-        pendingDeltaY = moveEvent.clientY - startY;
+        pendingLeft = dragStartLeft + moveEvent.clientX - dragStartClientX;
+        pendingTop = dragStartTop + moveEvent.clientY - dragStartClientY;
 
         if (rafId !== null) {
           return;
@@ -267,50 +275,35 @@ function bindOverlayInteractions(container: HTMLDivElement): void {
           rafId = null;
         }
 
-        container.style.transform = '';
+        // 在移除 dragging class 前，先将位置落到松手坐标（transition: none 保证无动画）
+        container.style.left = `${pendingLeft}px`;
+        container.style.top = `${pendingTop}px`;
+        container.style.right = 'auto';
+        container.style.bottom = 'auto';
 
-        const releasedState = {
-          ...baseState,
-          left: startLeft + pendingDeltaX,
-          top: startTop + pendingDeltaY,
-        };
+        // 移除拖拽状态（此后 box-shadow 立即恢复，不触发过渡动画）
+        container.classList.remove('ai-sidebar-overlay-dragging');
 
-        // 先把元素落位到”松手时的位置”，保证后续吸边动画方向正确
-        const releasedClampedState = clampOverlayState(releasedState);
-        applyOverlayState(container, releasedClampedState);
+        // 读取当前位置，判断是否越出视口
+        const currentState = readOverlayStateFromElement(container);
+        const clampedState = clampOverlayState(currentState);
 
-        // 拖拽结束后执行吸边并持久化
-        const snappedState = snapOverlayState(releasedClampedState);
+        const outOfBounds =
+          Math.abs(currentState.left - clampedState.left) > 1 ||
+          Math.abs(currentState.top - clampedState.top) > 1;
 
-        // 仅在“松手时越界”时触发回弹动画；X/Y 轴分别处理
-        const animateX = Math.abs(releasedState.left - releasedClampedState.left) > 1;
-        const animateY = Math.abs(releasedState.top - releasedClampedState.top) > 1;
-        const shouldAnimateSnap = animateX || animateY;
-
-        if (shouldAnimateSnap) {
-          container.classList.remove('ai-sidebar-overlay-dragging');
-          if (animateX) {
-            container.classList.add('ai-sidebar-overlay-snapping-x');
-          }
-          if (animateY) {
-            container.classList.add('ai-sidebar-overlay-snapping-y');
-          }
-
-          // 强制浏览器提交“松手位置”样式，再执行吸附动画
-          void container.offsetWidth;
-        }
-
-        applyOverlayState(container, snappedState);
-        saveOverlayState(snappedState);
-
-        if (shouldAnimateSnap) {
+        if (outOfBounds) {
+          // 越出视口：添加吸附动画类，强制提交当前越界位置，再平滑过渡到边界
+          container.classList.add('ai-sidebar-overlay-snapping');
+          void container.offsetWidth; // 强制 reflow，确保动画从当前越界位置开始
+          applyOverlayState(container, clampedState);
           window.setTimeout(() => {
-            container.classList.remove('ai-sidebar-overlay-snapping-x');
-            container.classList.remove('ai-sidebar-overlay-snapping-y');
-          }, 140);
-        } else {
-          container.classList.remove('ai-sidebar-overlay-dragging');
+            container.classList.remove('ai-sidebar-overlay-snapping');
+          }, 250);
         }
+        // 视口内：直接停在松手位置，无任何动画
+
+        saveOverlayState(clampedState);
       };
 
       document.addEventListener('mousemove', onMouseMove);
@@ -332,6 +325,45 @@ function bindOverlayInteractions(container: HTMLDivElement): void {
       document.querySelector<HTMLButtonElement>('.ai-sidebar-float-main')?.classList.remove('active');
     }
   });
+
+  // 自定义 resize 手柄（右下角），与拖拽同样的模式
+  const resizeHandle = container.querySelector('.ai-sidebar-overlay-resize-handle') as HTMLDivElement | null;
+  if (resizeHandle) {
+    resizeHandle.addEventListener('mousedown', (event: MouseEvent) => {
+      if (event.button !== 0) return;
+      event.preventDefault();
+      event.stopPropagation();
+
+      const startX = event.clientX;
+      const startY = event.clientY;
+      const startWidth = container.offsetWidth;
+      const startHeight = container.offsetHeight;
+      const minWidth = 300;
+      const minHeight = 400;
+
+      // resize 期间禁用 iframe 事件，防止被截断
+      container.classList.add('ai-sidebar-overlay-resizing');
+
+      const onMouseMove = (moveEvent: MouseEvent): void => {
+        const newWidth = Math.max(minWidth, startWidth + moveEvent.clientX - startX);
+        const newHeight = Math.max(minHeight, startHeight + moveEvent.clientY - startY);
+        container.style.width = `${newWidth}px`;
+        container.style.height = `${newHeight}px`;
+        container.style.right = 'auto';
+        container.style.bottom = 'auto';
+      };
+
+      const onMouseUp = (): void => {
+        document.removeEventListener('mousemove', onMouseMove);
+        document.removeEventListener('mouseup', onMouseUp);
+        container.classList.remove('ai-sidebar-overlay-resizing');
+        saveOverlayState(readOverlayStateFromElement(container));
+      };
+
+      document.addEventListener('mousemove', onMouseMove);
+      document.addEventListener('mouseup', onMouseUp);
+    });
+  }
 
   window.addEventListener('resize', () => {
     applyOverlayState(container, readOverlayStateFromElement(container));
@@ -424,9 +456,28 @@ function getOrCreateOverlayContainer(tabId: number): HTMLDivElement {
   iframe.setAttribute('title', 'Samo 助手');
   iframe.setAttribute('loading', 'eager');
 
+  // 自定义 resize 手柄，悬浮在 iframe 上方，避免被 iframe 事件截断
+  const resizeHandle = document.createElement('div');
+  resizeHandle.className = 'ai-sidebar-overlay-resize-handle';
+
   container.appendChild(header);
   container.appendChild(iframe);
+  container.appendChild(resizeHandle);
   document.body.appendChild(container);
+
+  // 检测页面主题并设置深色类
+  updateOverlayDarkTheme(container);
+
+  // 监听 html/body 的 class/style/data-theme 变化，响应网站动态切换主题
+  const themeObserver = new MutationObserver(() => {
+    updateOverlayDarkTheme(container);
+  });
+  const observeOpts: MutationObserverInit = {
+    attributes: true,
+    attributeFilter: ['class', 'style', 'data-theme', 'data-color-scheme'],
+  };
+  themeObserver.observe(document.documentElement, observeOpts);
+  themeObserver.observe(document.body, observeOpts);
 
   bindOverlayInteractions(container);
   loadOverlayState().then((state) => {
