@@ -594,7 +594,7 @@
 
 /* 翻译结果容器 */
 .ai-sidebar-translation {
-  margin: 8px 0;
+  margin: 8px 0 !important;
   padding: 10px 14px;
   background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
   border-left: 3px solid #0ea5e9;
@@ -617,6 +617,7 @@
 
 /* 关闭按钮 - 右上角悬浮 */
 .ai-sidebar-translation-close {
+  margin: 0 !important;  /* 防止第三方样式污染 */
   position: absolute;
   top: 4px;
   right: 4px;
@@ -647,6 +648,7 @@
 
 /* 翻译内容 */
 .ai-sidebar-translation-content {
+  margin: 0 !important;  /* 防止第三方页面 .prose 等排版样式给 div 添加 margin */
   color: #334155;
   word-break: break-word;
   white-space: pre-wrap;

@@ -917,8 +917,11 @@ function getTranslateTarget(): TranslateTarget | null {
 
 /**
  * 查找最合适的段落容器
- * 策略：从当前元素向上遍历，优先选择块级语义元素；
- *   对于 DIV 等容器，判断文本长度和子元素结构决定是否合适
+ * 策略：
+ * 1. 块级语义元素（P/H1-H6/LI 等）直接返回
+ * 2. 内联元素（SPAN/A 等）：若自身文本 ≥ 10 字符，说明被当作段落使用（如 <span data-as="p">），直接返回；
+ *    否则向上查找块级父元素
+ * 3. 容器元素（DIV 等）根据文本长度和子元素结构判断
  *
  * @param startElement - 起始元素（通常为鼠标悬停的元素）
  * @returns 最合适的段落元素，未找到时返回 null
@@ -934,7 +937,7 @@ function findBestParagraph(startElement: Element): Element | null {
     'LI', 'BLOCKQUOTE', 'ARTICLE', 'SECTION'];
   // 可能的段落容器（需要进一步判断文本长度和子元素结构）
   const containerElements = ['DIV', 'TD', 'TH', 'DD', 'FIGCAPTION'];
-  // 内联元素（不适合直接翻译，需向上查找块级容器）
+  // 内联元素（文本较短时需向上查找块级容器）
   const inlineElements = ['SPAN', 'A', 'STRONG', 'EM', 'B', 'I', 'CODE',
     'MARK', 'SMALL', 'SUB', 'SUP', 'LABEL'];
 
@@ -947,22 +950,25 @@ function findBestParagraph(startElement: Element): Element | null {
     }
 
     const tagName = el.tagName;
+    const text = (el as HTMLElement).innerText?.trim() || '';
 
     // 明确的块级段落元素，直接返回
     if (blockParagraphs.includes(tagName)) {
       return el;
     }
 
-    // 内联元素，继续向上查找
+    // 内联元素：有实质文本（≥ 10 字符）时视为"伪段落"直接返回，
+    // 避免爬到整个页面容器；文本过短才向上查找
     if (inlineElements.includes(tagName)) {
+      if (text.length >= 10 && text.length < 5000) {
+        return el;
+      }
       el = el.parentElement;
       continue;
     }
 
     // 容器元素（如 DIV），判断是否适合作为翻译段落
     if (containerElements.includes(tagName)) {
-      const text = (el as HTMLElement).innerText?.trim() || '';
-
       if (text.length > 0 && text.length < 5000) {
         // 短文本（< 500 字符）认为是一行或一段，直接返回
         if (text.length < 500) {
@@ -1095,18 +1101,49 @@ async function translateWithStream(
 /**
  * 在目标元素下方插入翻译结果容器
  *
- * @param target - 翻译目标
+ * @param target - 翻译目标（element 已由 findBestParagraph 确定为最合适的段落元素）
  * @param isLoading - 是否显示加载中状态
  * @returns 翻译结果容器元素
  */
 function showTranslation(target: TranslateTarget, isLoading = false): HTMLElement {
-  // 查找合适的块级插入位置（内联元素需要向上找到块级父元素）
-  const insertTarget = findBlockParent(target.element);
+  const sourceEl = target.element;
 
-  // 移除同一位置的旧翻译结果（避免堆积）
-  const existingTranslation = insertTarget?.nextElementSibling;
-  if (existingTranslation?.classList?.contains('ai-sidebar-translation')) {
-    existingTranslation.remove();
+  // 确定插入基准点：
+  // - 若 sourceEl 是内联元素（span/strong 等）且直接父元素是块级段落（p/h1-h6/li），
+  //   则插入到段落之后，避免翻译框出现在段落中间
+  // - 其他情况（包括 <span data-as="p"> 这类伪段落）直接插在 sourceEl 之后
+  const blockParagraphTags = ['P', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'LI', 'BLOCKQUOTE'];
+  const inlineTags = ['SPAN', 'A', 'STRONG', 'EM', 'B', 'I', 'CODE',
+    'MARK', 'SMALL', 'SUB', 'SUP', 'LABEL'];
+
+  let insertTarget: Element = sourceEl;
+  if (inlineTags.includes(sourceEl.tagName)) {
+    const parent = sourceEl.parentElement;
+    if (parent && blockParagraphTags.includes(parent.tagName)) {
+      // 真正嵌套在段落内的内联元素（如 <p>...<strong>xxx</strong>...</p>），上移到段落级
+      insertTarget = parent;
+    }
+    // 其他情况（如 <span data-as="p"> 直接是 div 的子项）维持 sourceEl 不变
+  }
+
+  // 判断插入后是否会成为横向 flex 容器的直接子项（如响应式两列布局）
+  const insertionParent = insertTarget.parentElement;
+  const insertionParentStyle = insertionParent ? window.getComputedStyle(insertionParent) : null;
+  const parentIsHorizontalFlex =
+    insertionParentStyle?.display === 'flex' && insertionParentStyle?.flexDirection !== 'column';
+
+  if (parentIsHorizontalFlex) {
+    // 横向 flex 子项：清理内部末尾的旧翻译，插入到其内部末尾
+    const lastChild = insertTarget.lastElementChild;
+    if (lastChild?.classList?.contains('ai-sidebar-translation')) {
+      lastChild.remove();
+    }
+  } else {
+    // 普通情况：清理紧随其后的旧翻译，插入到其后方
+    const nextSibling = insertTarget.nextElementSibling;
+    if (nextSibling?.classList?.contains('ai-sidebar-translation')) {
+      nextSibling.remove();
+    }
   }
 
   const container = document.createElement('div');
@@ -1120,7 +1157,9 @@ function showTranslation(target: TranslateTarget, isLoading = false): HTMLElemen
     <div class="ai-sidebar-translation-content">${isLoading ? '翻译中...' : ''}</div>
   `;
 
-  if (insertTarget) {
+  if (parentIsHorizontalFlex) {
+    insertTarget.insertAdjacentElement('beforeend', container);
+  } else {
     insertTarget.insertAdjacentElement('afterend', container);
   }
 
@@ -1132,27 +1171,6 @@ function showTranslation(target: TranslateTarget, isLoading = false): HTMLElemen
   });
 
   return container;
-}
-
-/**
- * 查找合适的块级父元素，用于插入翻译结果
- * 如果目标元素是内联元素，向上查找到第一个块级祖先
- */
-function findBlockParent(element: Element): Element {
-  const inlineElements = ['A', 'SPAN', 'STRONG', 'EM', 'B', 'I', 'CODE',
-    'MARK', 'SMALL', 'SUB', 'SUP', 'LABEL', 'ABBR',
-    'CITE', 'DFN', 'KBD', 'SAMP', 'VAR', 'TIME'];
-
-  let el: Element | null = element;
-
-  while (el && el !== document.body) {
-    if (!inlineElements.includes(el.tagName)) {
-      return el;
-    }
-    el = el.parentElement;
-  }
-
-  return element; // 未找到块级父元素，返回原始元素作为后备
 }
 
 /**
