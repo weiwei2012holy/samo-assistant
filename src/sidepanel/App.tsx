@@ -248,7 +248,7 @@ export const App: React.FC<AppProps> = ({
                   </div>
                   <div className="text-muted-foreground">
                     {settings.enableReasoning
-                      ? '使用 DeepSeek Reasoner 时会显示思考过程'
+                      ? '使用 deepseek-v4-pro 时会显示思考过程'
                       : '点击开启，查看 AI 的思考过程'}
                   </div>
                 </div>

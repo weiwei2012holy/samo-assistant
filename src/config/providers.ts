@@ -55,7 +55,7 @@ export const PROVIDER_DEFINITIONS: ProviderDefinition[] = [
     value: 'deepseek',
     label: 'DeepSeek',
     baseUrl: 'https://api.deepseek.com/v1',
-    models: ['deepseek-chat', 'deepseek-reasoner'],
+    models: ['deepseek-v4-flash', 'deepseek-v4-pro'],
     apiType: 'openai-compatible',
   },
   {

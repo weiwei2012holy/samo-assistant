@@ -13,7 +13,9 @@
       "Bash(git:*)",
       "Bash(GOPATH=/Users/yidejia/Project npm run lint 2>&1)",
       "Bash(GOPATH=/Users/yidejia/Project ./node_modules/.bin/eslint . 2>&1)",
-      "Bash(GOPATH=/Users/yidejia/Project npm run build)"
+      "Bash(GOPATH=/Users/yidejia/Project npm run build)",
+      "WebFetch(domain:api-docs.deepseek.com)",
+      "Bash(GOPATH=/Users/yidejia/Project npx tsc --noEmit)"
     ],
     "deny": [],
     "ask": []

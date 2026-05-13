@@ -36,7 +36,7 @@ const DEFAULT_PROVIDER_CONFIGS: Record<ModelProvider, ProviderConfig> = {
     provider: 'deepseek',
     apiKey: '',
     baseUrl: 'https://api.deepseek.com/v1',
-    model: 'deepseek-chat',
+    model: 'deepseek-v4-flash',
   },
   zhipu: {
     provider: 'zhipu',
@@ -107,6 +107,18 @@ class StorageService {
           theme: settings.theme || 'system',
           enableReasoning: false,
         };
+      }
+
+      // 迁移 DeepSeek 旧模型名（deepseek-chat → deepseek-v4-flash，deepseek-reasoner → deepseek-v4-pro）
+      const DEEPSEEK_MODEL_MAP: Record<string, string> = {
+        'deepseek-chat': 'deepseek-v4-flash',
+        'deepseek-reasoner': 'deepseek-v4-pro',
+      };
+      if (settings.providerConfigs?.deepseek?.model) {
+        const oldModel = settings.providerConfigs.deepseek.model as string;
+        if (DEEPSEEK_MODEL_MAP[oldModel]) {
+          settings.providerConfigs.deepseek.model = DEEPSEEK_MODEL_MAP[oldModel];
+        }
       }
 
       // 合并默认设置以确保新字段有默认值
