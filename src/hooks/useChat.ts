@@ -32,11 +32,49 @@ const loadingTabs = new Set<number>();
 // 各 tab 当前流式输出的已积累内容（切换回来时恢复进度）
 const tabStreamingStates = new Map<number, string>();
 
+/** 已从 storage 加载过的 url 集合，避免重复读取 */
+const hydratedUrls = new Set<string>();
+
+function chatStorageKey(url: string): string {
+  // 去掉 fragment，避免 #hash 造成同页面不同 key
+  try {
+    const u = new URL(url);
+    u.hash = '';
+    return `chat_messages_${u.toString()}`;
+  } catch {
+    return `chat_messages_${url}`;
+  }
+}
+
+/** 将对话消息持久化到 chrome.storage.local，供模式切换/刷新后恢复 */
+function persistMessages(url: string, messages: ChatMessage[]): void {
+  const key = chatStorageKey(url);
+  console.log('[useChat] 写入 storage', { key, count: messages.length });
+  chrome.storage.local.set({ [key]: messages }).then(() => {
+    console.log('[useChat] 写入 storage 成功', { key, count: messages.length });
+  }).catch((err) => {
+    console.error('持久化对话记录失败:', err);
+  });
+}
+
+/** 清除指定 URL 的持久化记录 */
+function clearPersistedMessages(url: string): void {
+  chrome.storage.local.remove(chatStorageKey(url));
+}
+
+/** 从 chrome.storage.local 异步加载指定 URL 的对话记录 */
+async function loadPersistedMessages(url: string): Promise<ChatMessage[]> {
+  return new Promise((resolve) => {
+    chrome.storage.local.get(chatStorageKey(url), (result) => {
+      const saved = result?.[chatStorageKey(url)];
+      resolve(Array.isArray(saved) ? saved : []);
+    });
+  });
+}
+
 /**
  * 监听标签页关闭事件，自动清理内存中的对话状态，防止内存泄漏
- *
- * 侧边栏（sidepanel）会在整个浏览器生命周期内复用，如果不及时清理
- * 已关闭标签页的 Map 记录，随着用户关闭标签页增多，会导致内存占用持续上涨。
+ * URL 级别的持久化记录不在此清除，让用户再次打开同一 URL 时仍能恢复
  */
 chrome.tabs.onRemoved.addListener((tabId) => {
   tabChatStates.delete(tabId);
@@ -54,7 +92,8 @@ chrome.tabs.onRemoved.addListener((tabId) => {
 export function useChat(
   providerConfig: ProviderConfig,
   enableReasoning: boolean = false,
-  tabId: number | null = null
+  tabId: number | null = null,
+  currentUrl: string | null = null
 ) {
   // 从全局状态获取当前 tab 的对话，或使用空数组
   const getTabState = useCallback((): TabChatState => {
@@ -68,18 +107,20 @@ export function useChat(
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(() => getTabState().error);
   const [streamingContent, setStreamingContent] = useState('');
+  // storage 里读到的历史记录（尚未恢复到当前会话），供用户手动恢复
+  const [savedMessages, setSavedMessages] = useState<ChatMessage[]>([]);
 
   // AbortController 用于取消请求
   const abortControllerRef = useRef<AbortController | null>(null);
 
-  // 跟踪最新 tabId，供异步回调中判断是否仍在原 tab
-  // 使用 ref 而非直接捕获闭包，确保回调拿到的始终是最新值
+  // 跟踪最新 tabId 和 URL，供异步回调中判断是否仍在原 tab/URL
   const tabIdRef = useRef(tabId);
+  const currentUrlRef = useRef(currentUrl);
 
-  // 当 tabId 变化时，加载对应 tab 的对话状态，并取消之前的请求
+  // 当 tabId 或 URL 变化时，加载对应的对话状态
   useEffect(() => {
-    // 同步更新 ref，确保所有异步回调都能感知 tab 切换
     tabIdRef.current = tabId;
+    currentUrlRef.current = currentUrl;
 
     // 取消之前的请求
     if (abortControllerRef.current) {
@@ -87,30 +128,54 @@ export function useChat(
       abortControllerRef.current = null;
     }
 
-    // 先重置为默认空状态
     setStreamingContent('');
     setIsLoading(false);
+    setSavedMessages([]);
 
-    // 加载当前 tab 的对话状态
-    const state = getTabState();
-    setMessages(state.messages);
-    setError(state.error);
-
-    // 若该 tab 有正在进行的请求，恢复加载状态与已积累的流式内容，
-    // 避免切换回来后出现"空白等待"
-    if (tabId !== null && loadingTabs.has(tabId)) {
-      setIsLoading(true);
-      const savedStreaming = tabStreamingStates.get(tabId);
-      if (savedStreaming) setStreamingContent(savedStreaming);
+    if (tabId === null || currentUrl === null) {
+      console.log('[useChat] tabId 或 currentUrl 为 null，跳过加载', { tabId, currentUrl });
+      return;
     }
-  }, [tabId, getTabState]);
 
-  // 保存当前 tab 的对话状态
+    // 内存中已有该 tab 的记录（同一会话内切换回来），直接加载
+    if (hydratedUrls.has(currentUrl) && tabChatStates.has(tabId)) {
+      const state = getTabState();
+      console.log('[useChat] 从内存恢复', { url: currentUrl, count: state.messages.length });
+      setMessages(state.messages);
+      setError(state.error);
+      if (loadingTabs.has(tabId)) {
+        setIsLoading(true);
+        const savedStreaming = tabStreamingStates.get(tabId);
+        if (savedStreaming) setStreamingContent(savedStreaming);
+      }
+      return;
+    }
+
+    // 首次加载该 URL：从 storage 读取历史记录，不自动恢复，等待用户确认
+    console.log('[useChat] 首次加载 URL，读取 storage', { url: currentUrl, key: chatStorageKey(currentUrl) });
+    hydratedUrls.add(currentUrl);
+    loadPersistedMessages(currentUrl).then((persisted) => {
+      console.log('[useChat] storage 读取结果', { url: currentUrl, count: persisted.length, persisted });
+      if (tabIdRef.current !== tabId || currentUrlRef.current !== currentUrl) {
+        console.log('[useChat] tab/url 已切换，丢弃 storage 结果');
+        return;
+      }
+      if (persisted.length > 0) {
+        // 有历史记录：暂存到 savedMessages，由用户点击恢复
+        setSavedMessages(persisted);
+      }
+    });
+  }, [tabId, currentUrl, getTabState]);
+
+  // 保存当前 tab 的对话状态，同时按 URL 持久化
   const saveTabState = useCallback((newMessages: ChatMessage[], newError: string | null) => {
     if (tabId !== null) {
       tabChatStates.set(tabId, { messages: newMessages, error: newError });
+      if (currentUrl !== null) {
+        persistMessages(currentUrl, newMessages);
+      }
     }
-  }, [tabId]);
+  }, [tabId, currentUrl]);
 
   // 更新消息并保存状态
   const updateMessages = useCallback((updater: (prev: ChatMessage[]) => ChatMessage[]) => {
@@ -322,24 +387,40 @@ export function useChat(
     }
   }, [tabId, providerConfig, enableReasoning, updateMessages, saveTabState]);
 
-  // 清除聊天历史
+  // 清除聊天历史（同时清除该 URL 的持久化记录）
   const clearMessages = useCallback(() => {
-    // 取消正在进行的请求
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
       abortControllerRef.current = null;
     }
-    // 清理进行中状态
     if (tabId !== null) {
       loadingTabs.delete(tabId);
       tabStreamingStates.delete(tabId);
+      tabChatStates.delete(tabId);
+    }
+    if (currentUrl !== null) {
+      hydratedUrls.delete(currentUrl);
+      clearPersistedMessages(currentUrl);
     }
     setMessages([]);
     setError(null);
     setStreamingContent('');
     setIsLoading(false);
-    saveTabState([], null);
-  }, [tabId, saveTabState]);
+  }, [tabId, currentUrl]);
+
+  // 将 savedMessages 恢复为当前会话（用户主动触发）
+  const restoreMessages = useCallback(() => {
+    if (savedMessages.length === 0 || tabId === null) return;
+    tabChatStates.set(tabId, { messages: savedMessages, error: null });
+    setMessages(savedMessages);
+    setError(null);
+    setSavedMessages([]);
+  }, [savedMessages, tabId]);
+
+  // 忽略历史记录（只关闭提示，不删除 storage，下次打开仍可恢复）
+  const dismissSavedMessages = useCallback(() => {
+    setSavedMessages([]);
+  }, []);
 
   return {
     messages,
@@ -349,5 +430,8 @@ export function useChat(
     sendMessage,
     summarizePage,
     clearMessages,
+    savedMessages,
+    restoreMessages,
+    dismissSavedMessages,
   };
 }

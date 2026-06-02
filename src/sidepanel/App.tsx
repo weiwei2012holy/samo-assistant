@@ -30,6 +30,9 @@ import {
   Brain,
   Trash2,
   ExternalLink,
+  LayoutPanelTop,
+  AppWindow,
+  PanelRight,
 } from 'lucide-react';
 import { SettingsPanel } from '@/components/SettingsPanel';
 import { Tooltip } from '@/components/ui/tooltip';
@@ -62,8 +65,13 @@ export const App: React.FC<AppProps> = ({
   const [input, setInput] = useState('');
   // currentTabId 由 useTabManager 写入，由 useChat 读取
   const [currentTabId, setCurrentTabId] = useState<number | null>(initialTargetTabId);
+  // 当前 tab 的 URL，用于按页面存储对话记录（跨刷新/模式切换恢复）
+  const [currentUrl, setCurrentUrl] = useState<string | null>(null);
   // 待提问的选中文本（来自右键"在侧边栏提问"）
   const [pendingAskText, setPendingAskText] = useState<string | null>(null);
+  // 切换显示方式下拉菜单
+  const [showModeMenu, setShowModeMenu] = useState(false);
+  const modeMenuRef = useRef<HTMLDivElement>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -100,7 +108,10 @@ export const App: React.FC<AppProps> = ({
     sendMessage,
     summarizePage,
     clearMessages,
-  } = useChat(settings.providerConfig, settings.enableReasoning, currentTabId);
+    savedMessages,
+    restoreMessages,
+    dismissSavedMessages,
+  } = useChat(settings.providerConfig, settings.enableReasoning, currentTabId, currentUrl);
 
   // ── 任务调度（排他锁 + 延迟执行 + 消息监听） ─────────────────────────────
   const { resetPendingState } = usePendingTask({
@@ -114,6 +125,7 @@ export const App: React.FC<AppProps> = ({
     setPendingAskText,
     textareaRef,
     targetTabId: surfaceMode === 'overlay' || surfaceMode === 'window' ? initialTargetTabId : null,
+    hasSavedMessages: savedMessages.length > 0,
   });
 
   // ── 标签页生命周期（监听激活/URL 变化，通知 background） ─────────────────
@@ -128,13 +140,33 @@ export const App: React.FC<AppProps> = ({
       fetchPageContent();
     }, [clearPageContent, resetPendingState, fetchPageContent]),
     onUrlChange: useCallback(() => {
-      // URL 变化：清空对话 + 页面内容 + 任务状态 + 重新抓取
+      // URL 变化：先清空对话 + 页面内容 + 任务状态，再读取新 URL 并重新抓取
       clearMessages();
       clearPageContent();
       resetPendingState();
+      if (currentTabId !== null) {
+        chrome.tabs.get(currentTabId, (tab) => {
+          if (chrome.runtime.lastError || !tab?.url) return;
+          setCurrentUrl(tab.url);
+        });
+      }
       fetchPageContent();
-    }, [clearMessages, clearPageContent, resetPendingState, fetchPageContent]),
+    }, [clearMessages, clearPageContent, resetPendingState, fetchPageContent, currentTabId]),
   });
+
+  // currentTabId 变化时获取对应 tab 的 URL
+  useEffect(() => {
+    console.log('[App] currentTabId 变化:', currentTabId);
+    if (currentTabId === null) return;
+    chrome.tabs.get(currentTabId, (tab) => {
+      if (chrome.runtime.lastError || !tab?.url) {
+        console.log('[App] chrome.tabs.get 失败:', chrome.runtime.lastError);
+        return;
+      }
+      console.log('[App] 获取到 URL:', tab.url);
+      setCurrentUrl(tab.url);
+    });
+  }, [currentTabId]);
 
   // 设置加载完成后获取初始页面内容
   useEffect(() => {
@@ -181,6 +213,27 @@ export const App: React.FC<AppProps> = ({
   }, [surfaceMode, settings.enableReasoning, updateEnableReasoning, clearMessages]);
 
   // ── 事件处理 ──────────────────────────────────────────────────────────────
+
+  // 切换显示方式（不关闭对话记录，通知 background 以新方式重新打开）
+  const handleSwitchMode = useCallback((mode: string) => {
+    setShowModeMenu(false);
+    // sidepanel/window 模式下 currentTabId 已知，直接用；避免 tabs.query 异步丢失用户手势上下文
+    const tabId = currentTabId;
+    if (!tabId) return;
+    chrome.runtime.sendMessage({ type: 'SWITCH_DISPLAY_MODE', mode, tabId });
+  }, [currentTabId]);
+
+  // 点击其他区域关闭模式菜单
+  useEffect(() => {
+    if (!showModeMenu) return;
+    const handler = (e: MouseEvent) => {
+      if (modeMenuRef.current && !modeMenuRef.current.contains(e.target as Node)) {
+        setShowModeMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [showModeMenu]);
 
   // 发送消息（自动拼接 pendingAskText）
   const handleSendMessage = useCallback((content: string) => {
@@ -290,6 +343,44 @@ export const App: React.FC<AppProps> = ({
                 <Settings className="h-4 w-4" />
               </Button>
             </Tooltip>
+
+            {/* 切换显示方式 */}
+            <div className="relative" ref={modeMenuRef}>
+              <Tooltip content="切换显示方式">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setShowModeMenu(v => !v)}
+                  className="h-8 w-8"
+                >
+                  <LayoutPanelTop className="h-4 w-4" />
+                </Button>
+              </Tooltip>
+              {showModeMenu && (
+                <div className="absolute right-0 top-full mt-1 z-50 w-44 rounded-lg border bg-popover shadow-md py-1 text-sm">
+                  {([
+                    { value: 'overlay', label: '页面内浮窗', Icon: AppWindow },
+                    { value: 'window', label: '独立窗口', Icon: ExternalLink },
+                    { value: 'sidepanel', label: '浏览器侧边栏', Icon: PanelRight },
+                  ] as const).map(({ value, label, Icon }) => (
+                    <button
+                      key={value}
+                      onClick={() => handleSwitchMode(value)}
+                      className={cn(
+                        'flex items-center gap-2 w-full px-3 py-2 hover:bg-accent transition-colors text-left',
+                        surfaceMode === value && 'text-primary font-medium'
+                      )}
+                    >
+                      <Icon className="h-4 w-4 flex-shrink-0" />
+                      {label}
+                      {surfaceMode === value && (
+                        <span className="ml-auto text-xs text-muted-foreground">当前</span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -306,6 +397,31 @@ export const App: React.FC<AppProps> = ({
             onClick={() => setView('settings')}
           >
             前往设置
+          </Button>
+        </div>
+      )}
+
+      {/* 恢复历史会话横幅：当前无消息但 storage 中有历史记录时显示 */}
+      {messages.length === 0 && savedMessages.length > 0 && (
+        <div className="flex items-center gap-2 p-3 mx-3 mt-3 rounded-lg bg-muted/60 border text-sm">
+          <span className="text-muted-foreground flex-1">
+            找到 {savedMessages.length} 条历史消息
+          </span>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 px-2 text-xs text-primary hover:text-primary"
+            onClick={restoreMessages}
+          >
+            加载会话
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 px-2 text-xs text-muted-foreground"
+            onClick={dismissSavedMessages}
+          >
+            忽略
           </Button>
         </div>
       )}

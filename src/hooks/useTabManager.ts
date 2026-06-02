@@ -79,10 +79,32 @@ export function useTabManager({
   useEffect(() => {
     if (fixedTabId) return;
 
-    const handler = (tabId: number, changeInfo: chrome.tabs.TabChangeInfo) => {
-      if (tabId === currentTabIdRef.current && changeInfo.status === 'complete') {
-        onUrlChangeRef.current();
+    // 记录上一次已知 URL，用于判断 status=complete 时 URL 是否真的变了
+    let lastKnownUrl: string | undefined;
+
+    // 初始化：获取当前 tab 的 URL 作为基准
+    const initUrl = async () => {
+      const tabId = currentTabIdRef.current;
+      if (tabId === null) return;
+      try {
+        const tab = await chrome.tabs.get(tabId);
+        lastKnownUrl = tab.url;
+      } catch {
+        // 忽略
       }
+    };
+    initUrl();
+
+    const handler = (tabId: number, changeInfo: chrome.tabs.TabChangeInfo, tab: chrome.tabs.Tab) => {
+      if (tabId !== currentTabIdRef.current) return;
+      if (changeInfo.status !== 'complete') return;
+
+      const newUrl = tab.url;
+      // URL 未变（纯刷新）：不触发 onUrlChange，避免清空当前页面的历史记录
+      if (newUrl === lastKnownUrl) return;
+
+      lastKnownUrl = newUrl;
+      onUrlChangeRef.current();
     };
     chrome.tabs.onUpdated.addListener(handler);
     return () => chrome.tabs.onUpdated.removeListener(handler);

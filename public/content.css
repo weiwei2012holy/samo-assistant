@@ -431,6 +431,70 @@
   stroke-width: 2;
 }
 
+/* 切换显示方式下拉菜单 */
+.ai-sidebar-overlay-mode-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  min-width: 160px;
+  background: #ffffff;
+  border: 1px solid rgba(0, 0, 0, 0.10);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14), 0 2px 6px rgba(0, 0, 0, 0.08);
+  z-index: 10;
+  padding: 4px;
+  overflow: hidden;
+}
+
+.ai-sidebar-overlay-mode-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: #374151;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  width: 100%;
+  text-align: left;
+  transition: background 0.12s ease;
+  white-space: nowrap;
+}
+
+.ai-sidebar-overlay-mode-item:hover {
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.ai-sidebar-overlay-mode-item.active {
+  background: rgba(59, 130, 246, 0.10);
+  color: #2563eb;
+}
+
+.ai-sidebar-overlay-mode-item svg {
+  width: 13px;
+  height: 13px;
+  flex-shrink: 0;
+  stroke-width: 2;
+}
+
+.ai-sidebar-overlay-mode-current {
+  margin-left: auto;
+  font-size: 10px;
+  color: #9ca3af;
+  font-weight: 400;
+}
+
+.ai-sidebar-overlay-mode-wrapper {
+  position: relative;
+}
+
+.ai-sidebar-overlay-mode-menu-hidden {
+  display: none;
+}
+
 /* 深色模式 */
 @media (prefers-color-scheme: dark) {
   .ai-sidebar-overlay-container {
@@ -474,6 +538,25 @@
   .ai-sidebar-overlay-action-btn.close-btn:hover {
     background: rgba(239, 68, 68, 0.15);
     color: #f87171;
+  }
+
+  .ai-sidebar-overlay-mode-menu {
+    background: rgba(32, 32, 36, 0.98);
+    border-color: rgba(255, 255, 255, 0.10);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45), 0 2px 6px rgba(0, 0, 0, 0.30);
+  }
+
+  .ai-sidebar-overlay-mode-item {
+    color: #d1d5db;
+  }
+
+  .ai-sidebar-overlay-mode-item:hover {
+    background: rgba(255, 255, 255, 0.08);
+  }
+
+  .ai-sidebar-overlay-mode-item.active {
+    background: rgba(59, 130, 246, 0.18);
+    color: #60a5fa;
   }
 }
 
@@ -519,6 +602,25 @@
 .ai-sidebar-overlay-dark .ai-sidebar-overlay-action-btn.close-btn:hover {
   background: rgba(239, 68, 68, 0.15);
   color: #f87171;
+}
+
+.ai-sidebar-overlay-dark .ai-sidebar-overlay-mode-menu {
+  background: rgba(32, 32, 36, 0.98);
+  border-color: rgba(255, 255, 255, 0.10);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45), 0 2px 6px rgba(0, 0, 0, 0.30);
+}
+
+.ai-sidebar-overlay-dark .ai-sidebar-overlay-mode-item {
+  color: #d1d5db;
+}
+
+.ai-sidebar-overlay-dark .ai-sidebar-overlay-mode-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.ai-sidebar-overlay-dark .ai-sidebar-overlay-mode-item.active {
+  background: rgba(59, 130, 246, 0.18);
+  color: #60a5fa;
 }
 
 .ai-sidebar-overlay-dark .ai-sidebar-overlay-resize-handle {

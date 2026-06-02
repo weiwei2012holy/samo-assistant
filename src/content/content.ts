@@ -204,6 +204,9 @@ function bindOverlayInteractions(container: HTMLDivElement): void {
   const closeBtn = container.querySelector(`#${OVERLAY_CLOSE_ID}`) as HTMLButtonElement | null;
   const clearBtn = document.getElementById('ai-sidebar-overlay-clear-btn') as HTMLButtonElement | null;
   const settingsBtn = document.getElementById('ai-sidebar-overlay-settings-btn') as HTMLButtonElement | null;
+  const switchModeWrapper = container.querySelector('.ai-sidebar-overlay-mode-wrapper') as HTMLDivElement | null;
+  const switchModeBtn = switchModeWrapper?.querySelector('button') as HTMLButtonElement | null;
+  const switchModeMenu = switchModeWrapper?.querySelector('.ai-sidebar-overlay-mode-menu') as HTMLDivElement | null;
   const iframe = container.querySelector(`#${OVERLAY_IFRAME_ID}`) as HTMLIFrameElement | null;
 
   if (clearBtn) {
@@ -228,6 +231,36 @@ function bindOverlayInteractions(container: HTMLDivElement): void {
       container.classList.add('ai-sidebar-overlay-hidden');
       document.querySelector<HTMLButtonElement>('.ai-sidebar-float-main')?.classList.remove('active');
     });
+  }
+
+  // 切换显示方式按钮
+  if (switchModeBtn && switchModeMenu) {
+    switchModeBtn.addEventListener('click', (e: MouseEvent) => {
+      e.stopPropagation();
+      const hidden = switchModeMenu.classList.contains('ai-sidebar-overlay-mode-menu-hidden');
+      switchModeMenu.classList.toggle('ai-sidebar-overlay-mode-menu-hidden', !hidden);
+    });
+
+    // 点击菜单项：发送切换消息给 background，并关闭菜单
+    switchModeMenu.addEventListener('click', (e: MouseEvent) => {
+      const item = (e.target as HTMLElement).closest<HTMLButtonElement>('.ai-sidebar-overlay-mode-item');
+      if (!item) return;
+      const mode = item.dataset.mode;
+      if (!mode) return;
+
+      switchModeMenu.classList.add('ai-sidebar-overlay-mode-menu-hidden');
+
+      // 直接发消息，不用 tabs.query 异步查 tabId，让 background 从 sender.tab.id 取，
+      // 避免异步查询后丢失用户手势上下文（sidePanel.open 和 windows.create 需要用户手势）
+      chrome.runtime.sendMessage({ type: 'SWITCH_DISPLAY_MODE', mode });
+    });
+
+    // 点击外部区域关闭菜单（在 shadow DOM 外注册，用 capture 确保优先响应）
+    document.addEventListener('click', (e: MouseEvent) => {
+      if (!switchModeWrapper?.contains(e.target as Node)) {
+        switchModeMenu.classList.add('ai-sidebar-overlay-mode-menu-hidden');
+      }
+    }, true);
   }
 
   if (header) {
@@ -443,6 +476,40 @@ function getOrCreateOverlayContainer(tabId: number): HTMLDivElement {
   settingsBtn.title = '设置';
   settingsBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>`;
 
+  // 切换显示方式按钮 + 下拉菜单
+  const switchModeWrapper = document.createElement('div');
+  switchModeWrapper.className = 'ai-sidebar-overlay-mode-wrapper';
+
+  const switchModeBtn = document.createElement('button');
+  switchModeBtn.className = 'ai-sidebar-overlay-action-btn';
+  switchModeBtn.setAttribute('aria-label', '切换显示方式');
+  switchModeBtn.title = '切换显示方式';
+  // LayoutPanelRight 图标
+  switchModeBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M15 3v18"/><path d="M3 9h12"/></svg>`;
+
+  const switchModeMenu = document.createElement('div');
+  switchModeMenu.className = 'ai-sidebar-overlay-mode-menu ai-sidebar-overlay-mode-menu-hidden';
+  switchModeMenu.innerHTML = `
+    <button class="ai-sidebar-overlay-mode-item" data-mode="overlay">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="M12 4v16"/><path d="M2 10h10"/></svg>
+      <span>页面内浮窗</span>
+      <span class="ai-sidebar-overlay-mode-current" data-for="overlay">当前</span>
+    </button>
+    <button class="ai-sidebar-overlay-mode-item" data-mode="window">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>
+      <span>独立窗口</span>
+      <span class="ai-sidebar-overlay-mode-current" data-for="window" style="display:none">当前</span>
+    </button>
+    <button class="ai-sidebar-overlay-mode-item" data-mode="sidepanel">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M15 3v18"/></svg>
+      <span>浏览器侧边栏</span>
+      <span class="ai-sidebar-overlay-mode-current" data-for="sidepanel" style="display:none">当前</span>
+    </button>
+  `;
+
+  switchModeWrapper.appendChild(switchModeBtn);
+  switchModeWrapper.appendChild(switchModeMenu);
+
   // 关闭按钮（X 图标）
   const closeBtn = document.createElement('button');
   closeBtn.id = OVERLAY_CLOSE_ID;
@@ -453,6 +520,7 @@ function getOrCreateOverlayContainer(tabId: number): HTMLDivElement {
 
   actions.appendChild(clearBtn);
   actions.appendChild(settingsBtn);
+  actions.appendChild(switchModeWrapper);
   actions.appendChild(closeBtn);
   header.appendChild(titleGroup);
   header.appendChild(actions);
@@ -727,8 +795,6 @@ function initFloatButton(): void {
   }
 }
 
-initFloatButton();
-
 // ==================== 页面内容提取功能 ====================
 
 /** 提取结果结构，与 src/types/index.ts 中的 PageContent 保持一致 */
@@ -751,6 +817,15 @@ chrome.runtime.onMessage.addListener(
       const targetTabId = Number.isInteger(message.tabId) ? (message.tabId as number) : null;
       if (targetTabId !== null) {
         openAssistantOverlay(targetTabId);
+      }
+      sendResponse({ success: true });
+      return true;
+    }
+
+    if (message.type === 'CLOSE_ASSISTANT_OVERLAY') {
+      const container = document.getElementById(OVERLAY_CONTAINER_ID) as HTMLDivElement | null;
+      if (container) {
+        container.classList.add('ai-sidebar-overlay-hidden');
       }
       sendResponse({ success: true });
       return true;
@@ -883,9 +958,6 @@ chrome.storage.onChanged.addListener((changes) => {
     loadTranslateConfig();
   }
 });
-
-// 初始化时立即加载配置
-loadTranslateConfig();
 
 /**
  * 获取当前的翻译目标
@@ -1449,3 +1521,9 @@ function ensureCurrentElement(): void {
 
 const isInIframe = window !== window.top;
 console.log(`Samo 助手 Content Script 已加载${isInIframe ? ' (iframe)' : ''}`);
+
+// iframe 内不初始化翻译、浮窗等功能，避免重复注入
+if (!isInIframe) {
+  loadTranslateConfig();
+  initFloatButton();
+}

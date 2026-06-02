@@ -4,8 +4,9 @@
  * @Description Chrome 扩展 Service Worker，处理扩展生命周期、右键菜单和消息通信
  **/
 
-// 存储待处理的任务
+// 存储待处理的任务（附带时间戳，超过 8 秒视为过期）
 let pendingTask = null;
+const PENDING_TASK_TTL_MS = 8000;
 
 // 设置存储键
 const SETTINGS_STORAGE_KEY = 'ai_sidebar_settings';
@@ -66,13 +67,14 @@ function persistEnabledTabs() {
 }
 
 /**
- * 为指定 tab 启用侧边栏（同步版本，不返回 Promise）
+ * 为指定 tab 启用侧边栏（返回 Promise，供切换流程 await）
  * @param {number} tabId
+ * @returns {Promise<void>}
  */
-function enableSidePanelForTab(tabId) {
+async function enableSidePanelForTab(tabId) {
   enabledTabs.add(tabId);
-  persistEnabledTabs(); // 同步持久化，防止 Service Worker 重启后丢失
-  chrome.sidePanel.setOptions({
+  persistEnabledTabs();
+  await chrome.sidePanel.setOptions({
     tabId,
     path: 'sidepanel.html',
     enabled: true
@@ -93,16 +95,16 @@ async function disableSidePanelForTab(tabId) {
 }
 
 /**
- * 打开侧边栏（必须在用户手势的同步上下文中调用）
- * 使用 tabId 确保是 tab-specific 面板，而非全局面板
+ * 打开侧边栏
  * @param {number} tabId
  */
 function openSidePanel(tabId) {
-  // 同步设置选项，然后立即打开（保持用户手势上下文）
-  enableSidePanelForTab(tabId);
-  chrome.sidePanel.open({ tabId }).catch((error) => {
-    console.error('打开侧边栏失败:', error);
-  });
+  enabledTabs.add(tabId);
+  persistEnabledTabs();
+  // setOptions 和 open 串行：setOptions 完成后再 open，避免 panel 还未 enable 时 open 失败
+  chrome.sidePanel.setOptions({ tabId, path: 'sidepanel.html', enabled: true })
+    .then(() => chrome.sidePanel.open({ tabId }))
+    .catch((error) => { console.error('打开侧边栏失败:', error); });
 }
 
 /**
@@ -311,7 +313,7 @@ chrome.action.onClicked.addListener((tab) => {
  * @param {number} tabId - 标签页 ID
  */
 function sendTaskToAssistant(task, tabId) {
-  pendingTask = task;
+  pendingTask = { ...task, _createdAt: Date.now() };
 
   if (assistantDisplayMode === 'overlay') {
     openAssistantOverlay(tabId)
@@ -424,11 +426,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
-  // 获取待处理任务
+  // 获取待处理任务（过期任务不返回）
   if (message.type === 'GET_PENDING_TASK') {
     const task = pendingTask;
     pendingTask = null;
-    sendResponse(task);
+    if (task && Date.now() - task._createdAt <= PENDING_TASK_TTL_MS) {
+      const { _createdAt, ...taskData } = task;
+      sendResponse(taskData);
+    } else {
+      sendResponse(null);
+    }
     return true;
   }
 
@@ -462,6 +469,50 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       enabledTabs.add(tabId);
       chrome.sidePanel.setOptions({ tabId, enabled: true, path: 'sidepanel.html' });
     }
+    sendResponse({ success: true });
+    return true;
+  }
+
+  // 运行时切换显示模式（对话记录已持久化到 chrome.storage.local，切换后重新打开可恢复）
+  if (message.type === 'SWITCH_DISPLAY_MODE') {
+    const { mode } = message;
+    const tabId = sender.tab?.id ?? message.tabId;
+    if (!mode || !tabId) {
+      sendResponse({ success: false });
+      return true;
+    }
+
+    const newMode = normalizeDisplayMode(mode);
+    const prevMode = assistantDisplayMode;
+
+    // 如果模式未变，什么都不做
+    if (prevMode === newMode) {
+      sendResponse({ success: true });
+      return true;
+    }
+
+    assistantDisplayMode = newMode;
+
+    // 持久化到 sync storage
+    chrome.storage.sync.get(SETTINGS_STORAGE_KEY, (data) => {
+      const settings = data?.[SETTINGS_STORAGE_KEY] || {};
+      chrome.storage.sync.set({ [SETTINGS_STORAGE_KEY]: { ...settings, assistantDisplayMode: newMode } });
+    });
+
+    // 关闭旧容器（fire-and-forget，不阻塞新容器的打开）
+    if (prevMode === 'overlay') {
+      chrome.tabs.sendMessage(tabId, { type: 'CLOSE_ASSISTANT_OVERLAY' }).catch(() => {});
+    } else if (prevMode === 'window' && assistantWindowId !== null) {
+      const windowToClose = assistantWindowId;
+      assistantWindowId = null;
+      chrome.windows.remove(windowToClose).catch(() => {});
+    } else if (prevMode === 'sidepanel') {
+      disableSidePanelForTab(tabId).catch(() => {});
+    }
+
+    // 直接打开新容器
+    openAssistantSurface(tabId);
+
     sendResponse({ success: true });
     return true;
   }

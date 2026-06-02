@@ -45,6 +45,8 @@ interface UsePendingTaskOptions {
    * sidepanel 模式下传 null 不做过滤。
    */
   targetTabId?: number | null;
+  /** 是否有待恢复的历史记录——有则跳过自动任务，等用户决定 */
+  hasSavedMessages?: boolean;
 }
 
 interface UsePendingTaskResult {
@@ -69,6 +71,7 @@ export function usePendingTask({
   setPendingAskText,
   textareaRef,
   targetTabId,
+  hasSavedMessages = false,
 }: UsePendingTaskOptions): UsePendingTaskResult {
   /** 标记是否已检查过待处理任务，避免重复触发 GET_PENDING_TASK */
   const [pendingTaskChecked, setPendingTaskChecked] = useState(false);
@@ -86,12 +89,14 @@ export function usePendingTask({
   const sendMessageRef = useRef(sendMessage);
   const summarizePageRef = useRef(summarizePage);
   const setPendingAskTextRef = useRef(setPendingAskText);
+  const hasSavedMessagesRef = useRef(hasSavedMessages);
 
   useEffect(() => { chatLoadingRef.current = chatLoading; });
   useEffect(() => { pageContentRef.current = pageContent; });
   useEffect(() => { isConfigValidRef.current = isConfigValid; });
   useEffect(() => { sendMessageRef.current = sendMessage; });
   useEffect(() => { summarizePageRef.current = summarizePage; });
+  useEffect(() => { hasSavedMessagesRef.current = hasSavedMessages; });
   useEffect(() => { setPendingAskTextRef.current = setPendingAskText; });
 
   /**
@@ -112,6 +117,13 @@ export function usePendingTask({
     // 排他检查：如果正在执行任务或正在加载，则跳过
     if (taskExecutingRef.current || chatLoadingRef.current) {
       console.log('任务被跳过：已有任务正在执行');
+      return;
+    }
+
+    // 有历史记录待恢复时，跳过自动任务，避免覆盖历史记录
+    if (hasSavedMessagesRef.current) {
+      console.log('任务被跳过：有历史记录待用户恢复');
+      pendingExecuteTaskRef.current = null;
       return;
     }
 
