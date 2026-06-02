@@ -112,18 +112,21 @@ function saveOverlayState(state: OverlayState): void {
 function clampOverlayState(state: OverlayState): OverlayState {
   const minWidth = 320;
   const minHeight = 420;
-  const maxWidth = Math.max(minWidth, window.innerWidth - 12);
-  const maxHeight = Math.max(minHeight, window.innerHeight - 12);
+  // 多屏切换时浏览器窗口可能比目标屏幕更宽，取两者较小值确保浮窗在物理屏幕可见区域内
+  const effectiveW = Math.min(window.innerWidth, window.screen.availWidth);
+  const effectiveH = Math.min(window.innerHeight, window.screen.availHeight);
+  const maxWidth = Math.max(minWidth, effectiveW - 12);
+  const maxHeight = Math.max(minHeight, effectiveH - 12);
 
   const width = Math.min(Math.max(state.width, minWidth), maxWidth);
   const height = Math.min(Math.max(state.height, minHeight), maxHeight);
   const left = Math.min(
     Math.max(state.left, OVERLAY_EDGE_GAP),
-    Math.max(OVERLAY_EDGE_GAP, window.innerWidth - width - OVERLAY_EDGE_GAP),
+    Math.max(OVERLAY_EDGE_GAP, effectiveW - width - OVERLAY_EDGE_GAP),
   );
   const top = Math.min(
     Math.max(state.top, OVERLAY_EDGE_GAP),
-    Math.max(OVERLAY_EDGE_GAP, window.innerHeight - height - OVERLAY_EDGE_GAP),
+    Math.max(OVERLAY_EDGE_GAP, effectiveH - height - OVERLAY_EDGE_GAP),
   );
 
   return {
@@ -345,8 +348,13 @@ function bindOverlayInteractions(container: HTMLDivElement): void {
       container.classList.add('ai-sidebar-overlay-resizing');
 
       const onMouseMove = (moveEvent: MouseEvent): void => {
-        const newWidth = Math.max(minWidth, startWidth + moveEvent.clientX - startX);
-        const newHeight = Math.max(minHeight, startHeight + moveEvent.clientY - startY);
+        // 拖拽时同样限制不超出物理屏幕（宽度/高度双向约束）
+        const effectiveW = Math.min(window.innerWidth, window.screen.availWidth);
+        const effectiveH = Math.min(window.innerHeight, window.screen.availHeight);
+        const maxWidth = Math.max(minWidth, effectiveW - container.offsetLeft - OVERLAY_EDGE_GAP);
+        const maxHeight = Math.max(minHeight, effectiveH - container.offsetTop - OVERLAY_EDGE_GAP);
+        const newWidth = Math.min(maxWidth, Math.max(minWidth, startWidth + moveEvent.clientX - startX));
+        const newHeight = Math.min(maxHeight, Math.max(minHeight, startHeight + moveEvent.clientY - startY));
         container.style.width = `${newWidth}px`;
         container.style.height = `${newHeight}px`;
         container.style.right = 'auto';
@@ -502,6 +510,8 @@ function openAssistantOverlay(tabId: number): void {
   }
 
   container.classList.remove('ai-sidebar-overlay-hidden');
+  // 每次打开前重新 clamp，防止从宽屏移到窄屏后尺寸/位置超出可见区域
+  applyOverlayState(container, readOverlayStateFromElement(container));
   saveOverlayState(readOverlayStateFromElement(container));
 }
 
@@ -691,8 +701,9 @@ function createFloatButton(): void {
       overlayContainer!.classList.add('ai-sidebar-overlay-hidden');
       mainBtn.classList.remove('active');
     } else if (overlayContainer) {
-      // 容器已存在但当前隐藏：恢复显示，按钮显示蓝色光晕
+      // 容器已存在但当前隐藏：重新 clamp 后恢复显示，防止多屏切换后超出可见区域
       overlayContainer.classList.remove('ai-sidebar-overlay-hidden');
+      applyOverlayState(overlayContainer, readOverlayStateFromElement(overlayContainer));
       mainBtn.classList.add('active');
       saveOverlayState(readOverlayStateFromElement(overlayContainer));
     } else {
