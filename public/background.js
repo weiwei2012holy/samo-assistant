@@ -156,8 +156,7 @@ async function openAssistantWindow(tabId) {
 
   const createdWindow = await chrome.windows.create({
     url: targetUrl,
-    // 使用 normal 窗口避免类似扩展弹窗的失焦关闭体验
-    type: 'normal',
+    type: 'popup',
     width: 460,
     height: 760,
     focused: true,
