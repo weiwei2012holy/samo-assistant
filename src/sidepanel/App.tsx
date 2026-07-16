@@ -32,13 +32,11 @@ import {
   LayoutPanelTop,
   AppWindow,
   PanelRight,
-  X,
 } from 'lucide-react';
 import { SettingsPanel } from '@/components/SettingsPanel';
 import { Tooltip } from '@/components/ui/tooltip';
 import { MessageList } from '@/components/MessageList';
 import { InputArea } from '@/components/InputArea';
-import { ScrollArea } from '@/components/ui/scroll-area';
 
 type View = 'main' | 'settings';
 
@@ -72,24 +70,7 @@ export const App: React.FC<AppProps> = ({
   const [pendingAskText, setPendingAskText] = useState<string | null>(null);
   // 切换显示方式下拉菜单
   const [showModeMenu, setShowModeMenu] = useState(false);
-  // ⌘K 行动菜单状态
-  const [showCommandMenu, setShowCommandMenu] = useState(false);
   const modeMenuRef = useRef<HTMLDivElement>(null);
-
-  // 监听全局 ⌘K 快捷键和 ESC 键
-  useEffect(() => {
-    const handleGlobalKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
-        e.preventDefault();
-        setShowCommandMenu(prev => !prev);
-      }
-      if (e.key === 'Escape') {
-        setShowCommandMenu(false);
-      }
-    };
-    window.addEventListener('keydown', handleGlobalKeyDown);
-    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
-  }, []);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -527,69 +508,10 @@ export const App: React.FC<AppProps> = ({
         quickQuestions={settings.quickQuestions || []}
         onQuickQuestion={handleQuickQuestion}
         onSend={handleSendMessage}
-        onOpenCommandMenu={() => setShowCommandMenu(prev => !prev)}
+        onSummarize={handleSummarize}
+        hasPageContent={!!pageContent?.content}
         textareaRef={textareaRef}
       />
-
-      {/* ⌘K 行动指令面板 */}
-      {showCommandMenu && (
-        <div className="absolute inset-0 z-50 bg-background/50 backdrop-blur-[2px] flex flex-col justify-end transition-all duration-300">
-          {/* 点击背景关闭 */}
-          <div className="absolute inset-0" onClick={() => setShowCommandMenu(false)} />
-          <div className="relative w-full bg-popover border-t rounded-t-2xl shadow-xl flex flex-col max-h-[75%] animate-in slide-in-from-bottom duration-200">
-            <div className="flex items-center justify-between px-4 py-3 border-b bg-muted/20">
-              <span className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5">
-                <Brain className="h-3.5 w-3.5 text-primary" />
-                Samo 行动面板
-              </span>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => setShowCommandMenu(false)}
-                className="h-7 w-7 rounded-full hover:bg-muted"
-              >
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
-            <ScrollArea className="flex-1 p-2">
-              <div className="space-y-1">
-                {([
-                  { 
-                    id: 'summarize', 
-                    label: '一键总结当前页面', 
-                    desc: '快速提炼当前网页的核心主旨与大纲', 
-                    disabled: !pageContent?.content || chatLoading,
-                    action: () => { handleSummarize(); setShowCommandMenu(false); } 
-                  },
-                  { id: 'mindmap', label: '生成思维导图 (未来支持)', desc: '基于网页结构生成可视化的思维导图', disabled: true },
-                  { id: 'rewrite', label: 'AI Rewrite 改写 (未来支持)', desc: '改写、润色当前选中的网页文字', disabled: true },
-                  { id: 'translate', label: '网页全文翻译 (未来支持)', desc: '将当前网页翻译为其他目标语言', disabled: true },
-                  { id: 'export', label: '导出为 Markdown (未来支持)', desc: '将对话记录与总结导出到本地', disabled: true }
-                ]).map((cmd) => (
-                  <button
-                    key={cmd.id}
-                    onClick={cmd.action}
-                    disabled={cmd.disabled}
-                    className={cn(
-                      "flex flex-col items-start w-full px-3 py-2 text-left rounded-lg transition-colors",
-                      cmd.disabled 
-                        ? "opacity-40 cursor-not-allowed" 
-                        : "hover:bg-accent active:bg-accent/80 text-foreground"
-                    )}
-                  >
-                    <span className="text-sm font-medium">{cmd.label}</span>
-                    <span className="text-[11px] text-muted-foreground mt-0.5">{cmd.desc}</span>
-                  </button>
-                ))}
-              </div>
-            </ScrollArea>
-            <div className="p-3 border-t bg-muted/20 text-[10px] text-muted-foreground flex justify-between items-center">
-              <span>按 Esc 或点击外部关闭</span>
-              <span className="font-mono bg-muted border px-1.5 py-0.5 rounded text-[9px]">ESC</span>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };
