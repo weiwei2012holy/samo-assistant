@@ -198,7 +198,7 @@ export const App: React.FC<AppProps> = ({
   // 自动滚动到底部
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, streamingContent]);
+  }, [messages, streamingContent, suggestedQuestions]);
 
   // 自动调整文本框高度
   useEffect(() => {
