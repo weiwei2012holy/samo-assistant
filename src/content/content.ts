@@ -230,6 +230,8 @@ function bindOverlayInteractions(container: HTMLDivElement): void {
     closeBtn.addEventListener('click', () => {
       container.classList.add('ai-sidebar-overlay-hidden');
       document.querySelector<HTMLButtonElement>('.ai-sidebar-float-main')?.classList.remove('active');
+      // 通知 background 更新状态
+      chrome.runtime.sendMessage({ type: 'FLOAT_ACTION', action: 'open_sidebar' }).catch(() => {});
     });
   }
 
@@ -760,26 +762,33 @@ function createFloatButton(): void {
       mainBtn.classList.remove('pressing');
     }, { once: true });
 
-    // 检查 overlay 当前可见状态
+    // 先检查是否是 overlay 模式且容器已存在
     const overlayContainer = document.getElementById(OVERLAY_CONTAINER_ID) as HTMLDivElement | null;
     const isOverlayOpen = overlayContainer && !overlayContainer.classList.contains('ai-sidebar-overlay-hidden');
 
-    if (isOverlayOpen) {
-      // 已打开：隐藏 overlay，按钮恢复无光晕状态
+    // 如果是 overlay 模式且已打开，则直接关闭
+    if (assistantDisplayMode === 'overlay' && isOverlayOpen) {
       overlayContainer!.classList.add('ai-sidebar-overlay-hidden');
       mainBtn.classList.remove('active');
-    } else if (overlayContainer) {
-      // 容器已存在但当前隐藏：重新 clamp 后恢复显示，防止多屏切换后超出可见区域
-      overlayContainer.classList.remove('ai-sidebar-overlay-hidden');
-      applyOverlayState(overlayContainer, readOverlayStateFromElement(overlayContainer));
-      mainBtn.classList.add('active');
-      saveOverlayState(readOverlayStateFromElement(overlayContainer));
-    } else {
-      // 容器不存在：首次打开，向后台脚本发送消息并按配置执行动作
-      mainBtn.classList.add('active');
-      const action = floatButtonClickAction === 'open_and_summarize' ? 'summarize' : 'open_sidebar';
-      chrome.runtime.sendMessage({ type: 'FLOAT_ACTION', action });
+      // 通知 background 更新状态
+      chrome.runtime.sendMessage({ type: 'FLOAT_ACTION', action: 'open_sidebar' });
+      return;
     }
+
+    // 其他情况，让 background 决定是打开还是关闭
+    const action = floatButtonClickAction === 'open_and_summarize' ? 'summarize' : 'open_sidebar';
+    chrome.runtime.sendMessage({ type: 'FLOAT_ACTION', action }, (response) => {
+      if (chrome.runtime.lastError) {
+        console.error('发送 FLOAT_ACTION 失败:', chrome.runtime.lastError);
+        return;
+      }
+      // 根据 background 返回的 action 更新按钮状态
+      if (response?.action === 'open') {
+        mainBtn.classList.add('active');
+      } else if (response?.action === 'close') {
+        mainBtn.classList.remove('active');
+      }
+    });
   });
 }
 
@@ -931,6 +940,8 @@ let providerConfig: ProviderConfig | null = null;
 let configLoaded = false;
 /** 翻译结果缓存，避免对相同文本重复请求 */
 const translatedTexts = new Map<string, string>();
+/** 当前助手显示模式 */
+let assistantDisplayMode: 'sidepanel' | 'window' | 'overlay' = 'overlay';
 
 /**
  * 从 chrome.storage.sync 加载翻译所需配置（异步）
@@ -938,15 +949,16 @@ const translatedTexts = new Map<string, string>();
 function loadTranslateConfig(): Promise<void> {
   return new Promise((resolve) => {
     chrome.storage.sync.get('ai_sidebar_settings', (result) => {
-      const settings: StorageSettings = result['ai_sidebar_settings'] || {};
+      const settings: StorageSettings & { assistantDisplayMode?: string } = result['ai_sidebar_settings'] || {};
       translateShortcut = settings.translateShortcut || 'Control';
       floatButtonClickAction = settings.floatButtonClickAction || 'open';
+      assistantDisplayMode = (settings.assistantDisplayMode as any) || 'overlay';
 
       const currentProvider = settings.currentProvider || 'openai';
       providerConfig = settings.providerConfigs?.[currentProvider] ?? null;
       configLoaded = true;
 
-      console.log('翻译配置已加载:', { translateShortcut, provider: currentProvider });
+      console.log('翻译配置已加载:', { translateShortcut, provider: currentProvider, assistantDisplayMode });
       resolve();
     });
   });

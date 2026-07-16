@@ -1,7 +1,7 @@
 /**
  * @Author wei
- * @Date 2026-02-07
- * @Description Chrome 扩展 Service Worker，处理扩展生命周期、右键菜单和消息通信
+ * @Date 2026-07-16
+ * @Description Chrome 扩展 Service Worker，处理扩展生命周期、右键菜单和消息通信，并修复不支持注入内容脚本页面的侧边栏打开问题
  **/
 
 // 存储待处理的任务（附带时间戳，超过 8 秒视为过期）
@@ -17,6 +17,9 @@ let assistantDisplayMode = 'overlay';
 // 助手窗口 ID（窗口模式复用）
 let assistantWindowId = null;
 
+// 跟踪每个标签页的助手打开状态（用于浮窗按钮切换）
+const tabAssistantOpenState = new Map();
+
 /**
  * 规范化显示模式，确保只返回合法值
  * @param {string | undefined} mode
@@ -26,6 +29,32 @@ function normalizeDisplayMode(mode) {
   if (mode === 'sidepanel') return 'sidepanel';
   if (mode === 'window') return 'window';
   return 'overlay';
+}
+
+/**
+ * 判断指定 URL 的页面是否不支持注入内容脚本（从而无法使用浮窗模式）
+ * @param {string | undefined} url
+ * @returns {boolean}
+ */
+function isUnsupportedInjectPage(url) {
+  if (!url) return true;
+  
+  // 屏蔽 Chrome 内部协议页面
+  if (url.startsWith('chrome://') || 
+      url.startsWith('chrome-extension://') || 
+      url.startsWith('chrome-search://') ||
+      url.startsWith('about:') ||
+      url.startsWith('edge://')) {
+    return true;
+  }
+  
+  // 屏蔽 Chrome 网上应用店
+  if (url.includes('chromewebstore.google.com') || 
+      url.includes('chrome.google.com/webstore')) {
+    return true;
+  }
+  
+  return false;
 }
 
 // 记录用户明确打开过侧边栏的 tab 集合（tab-specific 面板管理的核心）
@@ -101,10 +130,20 @@ async function disableSidePanelForTab(tabId) {
 function openSidePanel(tabId) {
   enabledTabs.add(tabId);
   persistEnabledTabs();
-  // setOptions 和 open 串行：setOptions 完成后再 open，避免 panel 还未 enable 时 open 失败
-  chrome.sidePanel.setOptions({ tabId, path: 'sidepanel.html', enabled: true })
-    .then(() => chrome.sidePanel.open({ tabId }))
-    .catch((error) => { console.error('打开侧边栏失败:', error); });
+  // 注意：sidePanel.open 必须在用户手势的同步上下文中调用
+  // setOptions 和 open 都同步调用（不等待 Promise），确保用户手势上下文不丢失
+  try {
+    chrome.sidePanel.setOptions({ tabId, path: 'sidepanel.html', enabled: true })
+      .catch((error) => {
+        console.error('启用并设置侧边栏选项失败:', error);
+      });
+    chrome.sidePanel.open({ tabId })
+      .catch((error) => {
+        console.error('执行打开侧边栏操作失败，可能是因为未在用户操作的同步上下文中调用:', error);
+      });
+  } catch (error) {
+    console.error('打开侧边栏同步捕获失败:', error);
+  }
 }
 
 /**
@@ -167,9 +206,19 @@ async function openAssistantWindow(tabId) {
 /**
  * 根据用户配置打开助手容器
  * @param {number} tabId
+ * @param {string | undefined} url
  */
-function openAssistantSurface(tabId) {
-  if (assistantDisplayMode === 'overlay') {
+function openAssistantSurface(tabId, url) {
+  tabAssistantOpenState.set(tabId, true);
+
+  // 如果页面不支持注入内容脚本，且当前配置是 overlay，则降级为 sidepanel 模式
+  let activeMode = assistantDisplayMode;
+  if (activeMode === 'overlay' && isUnsupportedInjectPage(url)) {
+    console.log('当前页面不支持注入脚本，自动将浮窗模式降级为侧边栏模式');
+    activeMode = 'sidepanel';
+  }
+
+  if (activeMode === 'overlay') {
     openAssistantOverlay(tabId).catch((error) => {
       console.error('打开页面内浮窗失败，自动降级为侧边栏:', error);
       openSidePanel(tabId);
@@ -177,7 +226,7 @@ function openAssistantSurface(tabId) {
     return;
   }
 
-  if (assistantDisplayMode === 'window') {
+  if (activeMode === 'window') {
     openAssistantWindow(tabId).catch((error) => {
       console.error('打开独立窗口失败，自动降级为侧边栏:', error);
       openSidePanel(tabId);
@@ -186,6 +235,28 @@ function openAssistantSurface(tabId) {
   }
 
   openSidePanel(tabId);
+}
+
+/**
+ * 关闭助手容器
+ * @param {number} tabId
+ */
+function closeAssistantSurface(tabId) {
+  if (assistantDisplayMode === 'overlay') {
+    chrome.tabs.sendMessage(tabId, { type: 'CLOSE_ASSISTANT_OVERLAY' }).catch(() => {});
+    return;
+  }
+
+  if (assistantDisplayMode === 'window' && assistantWindowId !== null) {
+    const windowToClose = assistantWindowId;
+    assistantWindowId = null;
+    chrome.windows.remove(windowToClose).catch(() => {});
+    return;
+  }
+
+  // 侧边栏模式：Chrome 不提供编程关闭侧边栏的 API
+  // 所以我们只更新状态，让用户手动关闭或下次点击时重新打开
+  console.log('侧边栏模式：更新状态为关闭，但用户需要手动关闭侧边栏');
 }
 
 /**
@@ -261,6 +332,7 @@ chrome.runtime.onInstalled.addListener(() => {
 // 监听标签页关闭，清理状态
 chrome.tabs.onRemoved.addListener((tabId) => {
   enabledTabs.delete(tabId);
+  tabAssistantOpenState.delete(tabId);
   persistEnabledTabs(); // 同步持久化
 });
 
@@ -296,13 +368,32 @@ chrome.tabs.onActivated.addListener(async (activeInfo) => {
 chrome.windows.onRemoved.addListener((windowId) => {
   if (windowId === assistantWindowId) {
     assistantWindowId = null;
+    // 窗口关闭，重置所有标签页的打开状态
+    tabAssistantOpenState.clear();
   }
 });
 
-// 点击扩展图标时打开侧边栏
+// 点击扩展图标时打开/切换侧边栏
 chrome.action.onClicked.addListener((tab) => {
-  if (tab.id) {
-    openAssistantSurface(tab.id);
+  if (!tab.id) return;
+
+  const tabId = tab.id;
+
+  // 如果是侧边栏模式，Chrome 没有提供关闭 API
+  if (assistantDisplayMode === 'sidepanel') {
+    openAssistantSurface(tabId, tab.url);
+    tabAssistantOpenState.set(tabId, true);
+    return;
+  }
+
+  // overlay 和 window 模式使用正常的切换逻辑
+  const isOpen = tabAssistantOpenState.get(tabId) === true;
+  if (isOpen) {
+    closeAssistantSurface(tabId);
+    tabAssistantOpenState.set(tabId, false);
+  } else {
+    openAssistantSurface(tabId, tab.url);
+    tabAssistantOpenState.set(tabId, true);
   }
 });
 
@@ -310,11 +401,19 @@ chrome.action.onClicked.addListener((tab) => {
  * 向助手容器发送任务（必须在用户手势的同步上下文中调用）
  * @param {Object} task - 任务对象
  * @param {number} tabId - 标签页 ID
+ * @param {string | undefined} url - 标签页 URL
  */
-function sendTaskToAssistant(task, tabId) {
+function sendTaskToAssistant(task, tabId, url) {
   pendingTask = { ...task, _createdAt: Date.now() };
 
-  if (assistantDisplayMode === 'overlay') {
+  // 如果页面不支持注入内容脚本，且当前配置是 overlay，则降级为 sidepanel 模式
+  let activeMode = assistantDisplayMode;
+  if (activeMode === 'overlay' && isUnsupportedInjectPage(url)) {
+    console.log('当前页面不支持注入脚本，自动将浮窗模式降级为侧边栏模式进行任务投递');
+    activeMode = 'sidepanel';
+  }
+
+  if (activeMode === 'overlay') {
     openAssistantOverlay(tabId)
       .then(() => {
         setTimeout(() => {
@@ -323,19 +422,15 @@ function sendTaskToAssistant(task, tabId) {
       })
       .catch((error) => {
         console.error('浮窗模式打开失败，回退侧边栏:', error);
-        enableSidePanelForTab(tabId);
-        chrome.sidePanel.open({ tabId }).then(() => {
-          setTimeout(() => {
-            dispatchTaskToAssistant(task, tabId);
-          }, 300);
-        }).catch((openError) => {
-          console.error('回退侧边栏失败:', openError);
-        });
+        openSidePanel(tabId);
+        setTimeout(() => {
+          dispatchTaskToAssistant(task, tabId);
+        }, 300);
       });
     return;
   }
 
-  if (assistantDisplayMode === 'window') {
+  if (activeMode === 'window') {
     openAssistantWindow(tabId)
       .then(() => {
         setTimeout(() => {
@@ -344,30 +439,19 @@ function sendTaskToAssistant(task, tabId) {
       })
       .catch((error) => {
         console.error('窗口模式打开失败，回退侧边栏:', error);
-        enableSidePanelForTab(tabId);
-        chrome.sidePanel.open({ tabId }).then(() => {
-          setTimeout(() => {
-            dispatchTaskToAssistant(task, tabId);
-          }, 300);
-        }).catch((openError) => {
-          console.error('回退侧边栏失败:', openError);
-        });
+        openSidePanel(tabId);
+        setTimeout(() => {
+          dispatchTaskToAssistant(task, tabId);
+        }, 300);
       });
     return;
   }
 
-  // 同步设置选项，保持用户手势上下文
-  enableSidePanelForTab(tabId);
-
-  chrome.sidePanel.open({ tabId })
-    .then(() => {
-      setTimeout(() => {
-        dispatchTaskToAssistant(task, tabId);
-      }, 300);
-    })
-    .catch((error) => {
-      console.error('打开侧边栏失败:', error);
-    });
+  // 侧边栏模式：直接同步打开并启用
+  openSidePanel(tabId);
+  setTimeout(() => {
+    dispatchTaskToAssistant(task, tabId);
+  }, 300);
 }
 
 // 处理右键菜单点击
@@ -405,7 +489,7 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
     text: selectedText,
     prompt: prompt,
     timestamp: Date.now()
-  }, tab.id);
+  }, tab.id, tab.url);
 });
 
 // 监听来自 content script 或 sidepanel 的消息
@@ -443,16 +527,49 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     const tab = sender.tab;
     if (!tab?.id) return;
 
-    if (message.action === 'open_sidebar') {
-      openAssistantSurface(tab.id);
-    } else if (message.action === 'summarize') {
-      sendTaskToAssistant({
-        type: 'summarize_page',
-        prompt: '请总结这个页面的内容',
-        timestamp: Date.now()
-      }, tab.id);
+    const tabId = tab.id;
+    const isOpen = tabAssistantOpenState.get(tabId) === true;
+
+    // 如果是侧边栏模式，Chrome 没有提供关闭 API，所以我们的逻辑简化为：
+    // - 每次点击都打开/刷新（如果是 summarize 动作则发送任务）
+    // - 状态主要用于控制浮窗按钮的激活样式
+    if (assistantDisplayMode === 'sidepanel') {
+      if (message.action === 'open_sidebar') {
+        openAssistantSurface(tabId, tab.url);
+      } else if (message.action === 'summarize') {
+        // 如果已经打开，只发送任务；否则打开并发送任务
+        sendTaskToAssistant({
+          type: 'summarize_page',
+          prompt: '请总结这个页面的内容',
+          timestamp: Date.now()
+        }, tabId, tab.url);
+      }
+      // 对于侧边栏模式，我们简化状态管理：每次点击都认为是"打开"状态
+      tabAssistantOpenState.set(tabId, true);
+      sendResponse({ success: true, action: 'open' });
+      return true;
     }
-    sendResponse({ success: true });
+
+    // overlay 和 window 模式使用正常的切换逻辑
+    if (isOpen) {
+      // 已打开：关闭助手
+      closeAssistantSurface(tabId);
+      tabAssistantOpenState.set(tabId, false);
+      sendResponse({ success: true, action: 'close' });
+    } else {
+      // 未打开：打开助手
+      if (message.action === 'open_sidebar') {
+        openAssistantSurface(tabId, tab.url);
+      } else if (message.action === 'summarize') {
+        sendTaskToAssistant({
+          type: 'summarize_page',
+          prompt: '请总结这个页面的内容',
+          timestamp: Date.now()
+        }, tabId, tab.url);
+      }
+      tabAssistantOpenState.set(tabId, true);
+      sendResponse({ success: true, action: 'open' });
+    }
     return true;
   }
 
@@ -510,7 +627,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
 
     // 直接打开新容器
-    openAssistantSurface(tabId);
+    openAssistantSurface(tabId, sender.tab?.url);
 
     sendResponse({ success: true });
     return true;
