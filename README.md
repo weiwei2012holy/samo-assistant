@@ -22,7 +22,9 @@
 6. 点击「加载已解压的扩展程序」
 7. 选择解压后的文件夹
 
-### 方式二：从源码构建
+### 方式二：从源码开发与构建
+
+#### 1. 克隆与安装依赖
 
 ```bash
 # 克隆仓库
@@ -31,12 +33,35 @@ cd ai-sidebar
 
 # 安装依赖
 npm install
-
-# 构建项目
-npm run build
-
-# 然后按照上述步骤 4-7 加载 dist 目录
 ```
+
+#### 2. 本地开发模式 (Development)
+
+在本地启动开发调试，可以在修改代码时让界面自动刷新：
+
+```bash
+# 启动宿主页面开发监听
+npm run dev
+
+# 启动 Content Script 内容脚本的自动编译监听
+npm run dev:content
+```
+
+> [!NOTE]
+> 随后在 Chrome 浏览器打开 `chrome://extensions/`，开启右上角的「开发者模式」，点击「加载已解压的扩展程序」，选择项目根目录下的 **`dist/`** 目录即可挂载运行。修改代码后页面将自动热重载。
+
+#### 3. 生产环境打包与发布 (Build & Package)
+
+如果您需要打包最新版以更新发布到 **Chrome Web Store**，可以直接调用内置的自动化流水线打包指令：
+
+```bash
+# 自动递增版本号、进行生产编译并一键压缩输出 samo-assistant.zip
+GOPATH=/Users/yidejia/Project npm run package
+```
+
+> [!TIP]
+> 运行该指令时，后台打包流程会自动将 `package.json` 和 `manifest.json` 中的版本号最后一位（Patch）自增 +1（例如从 `1.2.4` 自增为 `1.2.5`），清理旧 ZIP，执行严格的 TypeScript 静态检查与 Vite 生产环境构建，最后将 `dist/` 内部的所有产物自动压缩成根目录下的 **`samo-assistant.zip`**，您可以直接将此压缩包上传至谷歌扩展应用商店后台进行审核发布。
+
 
 ## 功能特点
 
