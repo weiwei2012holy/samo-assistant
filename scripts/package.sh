@@ -23,17 +23,21 @@ if [ -f "samo-assistant.zip" ]; then
   rm samo-assistant.zip
 fi
 
-# 2. 运行生产编译
+# 2. 自动更新版本号
+echo "🏷️ 正在自动更新版本号..."
+node scripts/bump-version.js
+
+# 3. 运行生产编译
 echo "🏗️ 正在运行 TypeScript 检查与生产构建..."
 GOPATH=/Users/yidejia/Project npm run build
 
-# 3. 校验打包产物
+# 4. 校验打包产物
 if [ ! -d "dist" ] || [ ! -f "dist/manifest.json" ]; then
   echo -e "${RED}❌ 错误: dist 目录不存在或 manifest.json 丢失，编译未成功完成。${NC}"
   exit 1
 fi
 
-# 4. 执行 ZIP 压缩
+# 5. 执行 ZIP 压缩
 echo "🤐 正在生成扩展程序 ZIP 包..."
 cd dist
 # -q 为静默模式，-r 为递归压缩，将当前目录下的所有子项压缩到上一层目录中
