@@ -14,7 +14,7 @@ import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { ChatMessage } from '@/types';
 import { cn } from '@/lib/utils';
-import { Bot, User, Loader2, AlertCircle, Sparkles, Copy, Check } from 'lucide-react';
+import { Bot, User, Loader2, AlertCircle, Sparkles, Copy, Check, History } from 'lucide-react';
 import { Markdown } from '@/components/Markdown';
 
 interface MessageListProps {
@@ -40,6 +40,10 @@ interface MessageListProps {
   suggestedQuestions?: string[];
   /** 点击引导性问题回调 */
   onSelectQuestion?: (question: string) => void;
+  /** 是否存在可恢复的历史会话 */
+  hasSavedMessages?: boolean;
+  /** 触发恢复历史会话 */
+  onRestoreMessages?: () => void;
 }
 
 /**
@@ -64,26 +68,41 @@ export const MessageList: React.FC<MessageListProps> = ({
   messagesEndRef,
   suggestedQuestions = [],
   onSelectQuestion,
+  hasSavedMessages = false,
+  onRestoreMessages,
 }) => {
   return (
     <ScrollArea className="flex-1 p-3">
       <div className="space-y-4">
         {/* 空状态 */}
         {messages.length === 0 && !chatLoading && (
-          <div className="text-center py-8">
-            <Bot className="h-12 w-12 mx-auto mb-4 text-muted-foreground opacity-50" />
-            <p className="text-sm text-muted-foreground mb-4">
+          <div className="text-center py-12">
+            <Bot className="h-12 w-12 mx-auto mb-4 text-muted-foreground opacity-50 animate-pulse" />
+            <p className="text-sm text-muted-foreground mb-6 font-medium">
               Samo 可以帮你总结页面或回答问题
             </p>
             {hasPageContent && configValid && (
-              <Button
-                onClick={onSummarize}
-                disabled={chatLoading}
-                className="gap-2"
-              >
-                <Sparkles className="h-4 w-4" />
-                一键总结页面
-              </Button>
+              <div className="flex flex-wrap justify-center gap-3">
+                <Button
+                  onClick={onSummarize}
+                  disabled={chatLoading}
+                  className="gap-2 shadow-sm font-medium"
+                >
+                  <Sparkles className="h-4 w-4" />
+                  一键总结页面
+                </Button>
+
+                {hasSavedMessages && (
+                  <Button
+                    variant="outline"
+                    onClick={onRestoreMessages}
+                    className="gap-2 border-primary/20 bg-primary/5 hover:bg-primary/10 hover:border-primary/30 shadow-sm text-primary font-medium"
+                  >
+                    <History className="h-4 w-4" />
+                    恢复上次阅读
+                  </Button>
+                )}
+              </div>
             )}
           </div>
         )}

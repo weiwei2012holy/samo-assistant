@@ -258,6 +258,7 @@ export const App: React.FC<AppProps> = ({
   // 发送消息（自动拼接 pendingAskText）
   const handleSendMessage = useCallback((content: string) => {
     if (!content.trim() || chatLoading) return;
+    dismissSavedMessages(); // 自动忽略历史会话
     let finalPrompt = content;
     if (pendingAskText) {
       finalPrompt = `${content}\n\n${pendingAskText}`;
@@ -265,13 +266,14 @@ export const App: React.FC<AppProps> = ({
     }
     sendMessage(finalPrompt, pageContent?.content);
     setInput('');
-  }, [sendMessage, pageContent, chatLoading, pendingAskText]);
+  }, [sendMessage, pageContent, chatLoading, pendingAskText, dismissSavedMessages]);
 
   // 触发页面总结
   const handleSummarize = useCallback(async () => {
     if (!pageContent?.content || chatLoading) return;
+    dismissSavedMessages(); // 自动忽略历史会话
     await summarizePage(pageContent.content);
-  }, [pageContent, chatLoading, summarizePage]);
+  }, [pageContent, chatLoading, summarizePage, dismissSavedMessages]);
 
   // 处理常用问题点击（将 {{text}} 替换为选中文本后发送）
   const handleQuickQuestion = useCallback((question: QuickQuestion) => {
@@ -444,7 +446,7 @@ export const App: React.FC<AppProps> = ({
       {/* 页面信息卡片 */}
       <div className="p-3 border-b">
         <Card className="bg-muted/30 border-muted/50 shadow-none rounded-xl">
-          <CardContent className="p-3 space-y-2.5">
+          <CardContent className="p-3">
             <div className="flex items-start gap-2">
               <div className="flex-1 min-w-0">
                 {pageContent ? (
@@ -493,31 +495,6 @@ export const App: React.FC<AppProps> = ({
                 )}
               </Button>
             </div>
-
-            {/* 恢复历史会话提示：收纳进网页卡片底部 */}
-            {messages.length === 0 && savedMessages.length > 0 && (
-              <div className="pt-2 border-t border-muted-foreground/15 flex items-center justify-between animate-fade-in">
-                <span className="text-[10px] text-muted-foreground font-medium">继续上次阅读？</span>
-                <div className="flex items-center gap-1">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-6 px-2 text-[10px] text-primary hover:text-primary-foreground hover:bg-primary rounded-md transition-all font-medium"
-                    onClick={restoreMessages}
-                  >
-                    恢复
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-6 px-2 text-[10px] text-muted-foreground hover:bg-muted hover:text-foreground rounded-md transition-all font-medium"
-                    onClick={dismissSavedMessages}
-                  >
-                    忽略
-                  </Button>
-                </div>
-              </div>
-            )}
           </CardContent>
         </Card>
       </div>
@@ -535,6 +512,8 @@ export const App: React.FC<AppProps> = ({
         messagesEndRef={messagesEndRef}
         suggestedQuestions={suggestedQuestions}
         onSelectQuestion={handleSendMessage}
+        hasSavedMessages={savedMessages.length > 0}
+        onRestoreMessages={restoreMessages}
       />
 
       {/* 输入区域 */}
