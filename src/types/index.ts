@@ -62,6 +62,8 @@ export interface AppSettings {
   floatButtonClickAction?: FloatButtonClickAction;
   /** 用户自定义的斜杠 / 指令列表 */
   customSlashCommands?: CustomSlashCommand[];
+  /** 默认翻译目标语言 (如 'zh', 'en', 'system') */
+  defaultTranslateLanguage?: string;
 }
 
 /**

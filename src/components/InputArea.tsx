@@ -8,6 +8,7 @@ import React, { RefObject, useState, useEffect, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { QuickQuestion, CustomSlashCommand } from '@/types';
+import { getTargetLanguageName } from '@/services/storage';
 import { Send, Loader2, X, Brain } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -36,6 +37,8 @@ interface InputAreaProps {
   hasPageContent: boolean;
   /** 用户自定义的斜杠 / 指令列表 */
   customSlashCommands?: CustomSlashCommand[];
+  /** 默认翻译目标语言 */
+  defaultTranslateLanguage?: string;
   /** textarea ref，用于 ask 任务时自动聚焦 */
   textareaRef: RefObject<HTMLTextAreaElement>;
 }
@@ -59,6 +62,7 @@ export const InputArea: React.FC<InputAreaProps> = ({
   onSummarize,
   hasPageContent,
   customSlashCommands = [],
+  defaultTranslateLanguage = 'system',
   textareaRef,
 }) => {
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -100,17 +104,24 @@ export const InputArea: React.FC<InputAreaProps> = ({
       }
     ];
 
-    const userCmds = customSlashCommands.map(cmd => ({
-      id: cmd.id,
-      icon: '⚙️',
-      label: cmd.label,
-      alias: [cmd.id, cmd.label],
-      disabled: !hasPageContent,
-      action: () => onSend(cmd.prompt)
-    }));
+    const userCmds = customSlashCommands.map(cmd => {
+      let prompt = cmd.prompt;
+      if (cmd.id === 'translation' && prompt.includes('翻译为中文')) {
+        const targetLangName = getTargetLanguageName(defaultTranslateLanguage);
+        prompt = prompt.replace('翻译为中文', `翻译为${targetLangName}`);
+      }
+      return {
+        id: cmd.id,
+        icon: '⚙️',
+        label: cmd.label,
+        alias: [cmd.id, cmd.label],
+        disabled: !hasPageContent,
+        action: () => onSend(prompt)
+      };
+    });
 
     return [...systemCmds, ...userCmds];
-  }, [onSummarize, onSend, hasPageContent, customSlashCommands]);
+  }, [onSummarize, onSend, hasPageContent, customSlashCommands, defaultTranslateLanguage]);
 
   // 判断是否应该显示指令面板
   const showPalette = useMemo(() => {

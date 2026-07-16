@@ -80,7 +80,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   customSlashCommands: [
     { id: 'critique', label: '逻辑批判', prompt: '请用批判性思维，分析当前网页文章中的核心立论、论证链条、存在的偏见及潜在的逻辑漏洞。' },
     { id: 'translation', label: '对照翻译', prompt: '请将当前网页内容的高级大意与细节段落翻译为中文，并提供优雅的段落对照排版。' }
-  ]
+  ],
+  defaultTranslateLanguage: 'system'
 };
 
 /**
@@ -316,6 +317,45 @@ class StorageService {
     const settings = await this.getSettings();
     return settings.quickQuestions || DEFAULT_SETTINGS.quickQuestions || [];
   }
+
+  /**
+   * 更新默认翻译语言
+   * @param lang - 语言标识（zh, en, system 等）
+   */
+  async updateDefaultTranslateLanguage(lang: string): Promise<void> {
+    const settings = await this.getSettings();
+    settings.defaultTranslateLanguage = lang;
+    await this.saveSettings(settings);
+  }
+}
+
+/**
+ * 辅助函数：根据语言代码获取语言显示名称
+ * @param langCode 语言代码 (zh, zh-TW, en, ja, ko 等)
+ */
+export function getTargetLanguageName(langCode?: string): string {
+  if (!langCode || langCode === 'system') {
+    const sysLang = navigator.language || 'zh-CN';
+    if (sysLang.startsWith('zh')) {
+      return sysLang.toLowerCase().includes('tw') || sysLang.toLowerCase().includes('hk') ? '中文 (繁体)' : '中文 (简体)';
+    }
+    if (sysLang.startsWith('en')) return '英文';
+    if (sysLang.startsWith('ja')) return '日语';
+    if (sysLang.startsWith('ko')) return '韩语';
+    return sysLang;
+  }
+
+  const langNames: Record<string, string> = {
+    'zh': '中文 (简体)',
+    'zh-TW': '中文 (繁体)',
+    'en': '英文',
+    'ja': '日语',
+    'ko': '韩语',
+    'fr': '法语',
+    'es': '西班牙语',
+    'de': '德语'
+  };
+  return langNames[langCode] || langCode;
 }
 
 // 导出单例实例

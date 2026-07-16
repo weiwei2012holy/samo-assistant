@@ -21,6 +21,7 @@ import { useTabManager } from '@/hooks/useTabManager';
 import { usePendingTask } from '@/hooks/usePendingTask';
 import { QuickQuestion } from '@/types';
 import { cn } from '@/lib/utils';
+import { getTargetLanguageName } from '@/services/storage';
 import {
   Settings,
   Loader2,
@@ -88,6 +89,7 @@ export const App: React.FC<AppProps> = ({
     updateTranslateShortcut,
     updateQuickQuestions,
     updateCustomSlashCommands,
+    updateDefaultTranslateLanguage,
     isConfigValid,
   } = useSettings();
 
@@ -260,11 +262,17 @@ export const App: React.FC<AppProps> = ({
   // 处理常用问题点击（将 {{text}} 替换为选中文本后发送）
   const handleQuickQuestion = useCallback((question: QuickQuestion) => {
     if (!pendingAskText || chatLoading) return;
-    const prompt = question.prompt.replace('{{text}}', pendingAskText);
-    sendMessage(prompt, pageContent?.content);
+    let prompt = question.prompt;
+    // 如果点击的是第 1 个常用问题（翻译），我们动态拼接目标语言名称
+    if (question.id === '1') {
+      const targetLangName = getTargetLanguageName(settings.defaultTranslateLanguage);
+      prompt = `请将以下内容翻译成${targetLangName}：\n\n{{text}}`;
+    }
+    const actualPrompt = prompt.replace('{{text}}', pendingAskText);
+    sendMessage(actualPrompt, pageContent?.content);
     setPendingAskText(null);
     setInput('');
-  }, [pendingAskText, chatLoading, sendMessage, pageContent]);
+  }, [pendingAskText, chatLoading, sendMessage, pageContent, settings.defaultTranslateLanguage]);
 
   const configValid = isConfigValid();
 
@@ -288,6 +296,8 @@ export const App: React.FC<AppProps> = ({
         onUpdateEnableSuggestedQuestions={updateEnableSuggestedQuestions}
         customSlashCommands={settings.customSlashCommands}
         onUpdateCustomSlashCommands={updateCustomSlashCommands}
+        defaultTranslateLanguage={settings.defaultTranslateLanguage}
+        onUpdateDefaultTranslateLanguage={updateDefaultTranslateLanguage}
       />
     );
   }
@@ -514,6 +524,7 @@ export const App: React.FC<AppProps> = ({
         onSummarize={handleSummarize}
         hasPageContent={!!pageContent?.content}
         customSlashCommands={settings.customSlashCommands || []}
+        defaultTranslateLanguage={settings.defaultTranslateLanguage || 'system'}
         textareaRef={textareaRef}
       />
     </div>

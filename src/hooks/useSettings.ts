@@ -142,6 +142,12 @@ export function useSettings() {
     await saveSettings(newSettings);
   }, [settings, saveSettings]);
 
+  // 更新默认翻译目标语言
+  const updateDefaultTranslateLanguage = useCallback(async (lang: string) => {
+    const newSettings = { ...settings, defaultTranslateLanguage: lang };
+    await saveSettings(newSettings);
+  }, [settings, saveSettings]);
+
   // 更新助手打开方式
   const updateAssistantDisplayMode = useCallback(async (mode: AssistantDisplayMode) => {
     const newSettings = { ...settings, assistantDisplayMode: mode };
@@ -173,6 +179,7 @@ export function useSettings() {
     updateTranslateShortcut,
     updateQuickQuestions,
     updateCustomSlashCommands,
+    updateDefaultTranslateLanguage,
     updateAssistantDisplayMode,
     updateFloatButtonClickAction,
     isConfigValid,

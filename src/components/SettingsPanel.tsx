@@ -57,6 +57,10 @@ interface SettingsPanelProps {
   customSlashCommands?: CustomSlashCommand[];
   /** 更新用户自定义指令的回调 */
   onUpdateCustomSlashCommands?: (commands: CustomSlashCommand[]) => Promise<void>;
+  /** 默认翻译目标语言 */
+  defaultTranslateLanguage?: string;
+  /** 更新默认翻译语言的回调 */
+  onUpdateDefaultTranslateLanguage?: (lang: string) => Promise<void>;
 }
 
 /**
@@ -79,6 +83,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
   onUpdateEnableSuggestedQuestions,
   customSlashCommands = [],
   onUpdateCustomSlashCommands,
+  defaultTranslateLanguage = 'system',
+  onUpdateDefaultTranslateLanguage,
 }) => {
   // 表单状态
   const [provider, setProvider] = useState<ModelProvider>(config.provider);
@@ -430,6 +436,35 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
               <p className="text-xs text-muted-foreground mt-2">
                 💡 如果有选中文本，将优先翻译选中内容
               </p>
+            </CardContent>
+          </Card>
+
+          {/* 默认翻译语言 */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">默认翻译语言</CardTitle>
+              <CardDescription>
+                快捷划词翻译或斜杠指令翻译当前网页时所使用的目标语言
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Select
+                value={defaultTranslateLanguage}
+                onChange={(e) => {
+                  onUpdateDefaultTranslateLanguage?.(e.target.value);
+                }}
+                options={[
+                  { value: 'system', label: '系统语言 (自动匹配)' },
+                  { value: 'zh', label: '中文 (简体)' },
+                  { value: 'zh-TW', label: '中文 (繁体)' },
+                  { value: 'en', label: '英文' },
+                  { value: 'ja', label: '日语' },
+                  { value: 'ko', label: '韩语' },
+                  { value: 'fr', label: '法语' },
+                  { value: 'es', label: '西班牙语' },
+                  { value: 'de', label: '德语' },
+                ]}
+              />
             </CardContent>
           </Card>
 
