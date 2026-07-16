@@ -1,7 +1,7 @@
 /**
  * @Author wei
- * @Date 2026-02-07
- * @Description 聊天 Hook，管理聊天状态和消息，支持按 tabId 隔离对话
+ * @Date 2026-07-16
+ * @Description 聊天 Hook，管理聊天状态和消息，支持按 tabId 隔离对话与独立 AbortController 的多 tab 并发 AI 生成
  **/
 
 import { useState, useCallback, useRef, useEffect } from 'react';
@@ -34,6 +34,9 @@ const tabStreamingStates = new Map<number, string>();
 
 /** 已从 storage 加载过的 url 集合，避免重复读取 */
 const hydratedUrls = new Set<string>();
+
+/** 存储每个 tab 当前的 AbortController，用于控制多 tab 并发请求独立取消 */
+const tabAbortControllers = new Map<number, AbortController>();
 
 function chatStorageKey(url: string): string {
   // 去掉 fragment，避免 #hash 造成同页面不同 key
@@ -110,9 +113,6 @@ export function useChat(
   // storage 里读到的历史记录（尚未恢复到当前会话），供用户手动恢复
   const [savedMessages, setSavedMessages] = useState<ChatMessage[]>([]);
 
-  // AbortController 用于取消请求
-  const abortControllerRef = useRef<AbortController | null>(null);
-
   // 跟踪最新 tabId 和 URL，供异步回调中判断是否仍在原 tab/URL
   const tabIdRef = useRef(tabId);
   const currentUrlRef = useRef(currentUrl);
@@ -121,12 +121,6 @@ export function useChat(
   useEffect(() => {
     tabIdRef.current = tabId;
     currentUrlRef.current = currentUrl;
-
-    // 取消之前的请求
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-      abortControllerRef.current = null;
-    }
 
     setStreamingContent('');
     setIsLoading(false);
@@ -196,11 +190,15 @@ export function useChat(
     // 快照本次请求时的 tabId，用于异步完成后判断是否仍在同一 tab
     const requestTabId = tabId;
 
-    // 取消之前的请求
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
+    // 取消当前 tab 之前正在进行的请求，并创建该 tab 独享的 AbortController
+    const myController = new AbortController();
+    if (requestTabId !== null) {
+      const prevController = tabAbortControllers.get(requestTabId);
+      if (prevController) {
+        prevController.abort();
+      }
+      tabAbortControllers.set(requestTabId, myController);
     }
-    abortControllerRef.current = new AbortController();
 
     // 标记该 tab 有正在进行的请求
     if (requestTabId !== null) loadingTabs.add(requestTabId);
@@ -234,7 +232,7 @@ export function useChat(
         systemPrompt,
         (chunk) => {
           // 检查是否已取消
-          if (abortControllerRef.current?.signal.aborted) return;
+          if (myController.signal.aborted) return;
           // 无论是否在当前 tab，都先积累内容并保存进度
           fullContent += chunk;
           if (requestTabId !== null) tabStreamingStates.set(requestTabId, fullContent);
@@ -246,7 +244,7 @@ export function useChat(
       );
 
       // 检查是否已取消
-      if (abortControllerRef.current?.signal.aborted) return;
+      if (myController.signal.aborted) return;
 
       // 添加助手消息
       const assistantMessage: ChatMessage = {
@@ -284,6 +282,9 @@ export function useChat(
       if (requestTabId !== null) {
         loadingTabs.delete(requestTabId);
         tabStreamingStates.delete(requestTabId);
+        if (tabAbortControllers.get(requestTabId) === myController) {
+          tabAbortControllers.delete(requestTabId);
+        }
       }
       // 只有仍在原 tab 时才重置加载状态，避免打断其他 tab 正在进行的请求
       if (tabIdRef.current === requestTabId) {
@@ -297,11 +298,15 @@ export function useChat(
     // 快照本次请求时的 tabId
     const requestTabId = tabId;
 
-    // 取消之前的请求
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
+    // 取消当前 tab 之前正在进行的请求，并创建该 tab 独享的 AbortController
+    const myController = new AbortController();
+    if (requestTabId !== null) {
+      const prevController = tabAbortControllers.get(requestTabId);
+      if (prevController) {
+        prevController.abort();
+      }
+      tabAbortControllers.set(requestTabId, myController);
     }
-    abortControllerRef.current = new AbortController();
 
     // 标记该 tab 有正在进行的请求
     if (requestTabId !== null) loadingTabs.add(requestTabId);
@@ -329,7 +334,7 @@ export function useChat(
         pageContent,
         (chunk) => {
           // 检查是否已取消
-          if (abortControllerRef.current?.signal.aborted) return;
+          if (myController.signal.aborted) return;
           // 无论是否在当前 tab，都先积累内容并保存进度
           fullContent += chunk;
           if (requestTabId !== null) tabStreamingStates.set(requestTabId, fullContent);
@@ -341,7 +346,7 @@ export function useChat(
       );
 
       // 检查是否已取消
-      if (abortControllerRef.current?.signal.aborted) return;
+      if (myController.signal.aborted) return;
 
       // 添加总结结果
       const assistantMessage: ChatMessage = {
@@ -379,6 +384,9 @@ export function useChat(
       if (requestTabId !== null) {
         loadingTabs.delete(requestTabId);
         tabStreamingStates.delete(requestTabId);
+        if (tabAbortControllers.get(requestTabId) === myController) {
+          tabAbortControllers.delete(requestTabId);
+        }
       }
       // 只有仍在原 tab 时才重置加载状态
       if (tabIdRef.current === requestTabId) {
@@ -389,11 +397,12 @@ export function useChat(
 
   // 清除聊天历史（同时清除该 URL 的持久化记录）
   const clearMessages = useCallback(() => {
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-      abortControllerRef.current = null;
-    }
     if (tabId !== null) {
+      const controller = tabAbortControllers.get(tabId);
+      if (controller) {
+        controller.abort();
+        tabAbortControllers.delete(tabId);
+      }
       loadingTabs.delete(tabId);
       tabStreamingStates.delete(tabId);
       tabChatStates.delete(tabId);
