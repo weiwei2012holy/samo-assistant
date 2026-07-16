@@ -11,6 +11,7 @@ import {
   QuickQuestion,
   AssistantDisplayMode,
   FloatButtonClickAction,
+  CustomSlashCommand,
 } from '@/types';
 
 // 存储键名常量
@@ -76,6 +77,10 @@ export const DEFAULT_SETTINGS: AppSettings = {
     { id: '5', label: '真伪', prompt: '请判断以下内容的真假：\n\n{{text}}' },
     { id: '6', label: '回贴', prompt: '请为以下内容生成一个合适的回贴：\n\n{{text}}' },
   ],
+  customSlashCommands: [
+    { id: 'critique', label: '逻辑批判', prompt: '请用批判性思维，分析当前网页文章中的核心立论、论证链条、存在的偏见及潜在的逻辑漏洞。' },
+    { id: 'translation', label: '对照翻译', prompt: '请将当前网页内容的高级大意与细节段落翻译为中文，并提供优雅的段落对照排版。' }
+  ]
 };
 
 /**
@@ -250,6 +255,16 @@ class StorageService {
   async updateAssistantDisplayMode(mode: AssistantDisplayMode): Promise<void> {
     const settings = await this.getSettings();
     settings.assistantDisplayMode = mode;
+    await this.saveSettings(settings);
+  }
+
+  /**
+   * 更新用户自定义的斜杠 / 指令列表
+   * @param commands - 自定义指令列表
+   */
+  async updateCustomSlashCommands(commands: CustomSlashCommand[]): Promise<void> {
+    const settings = await this.getSettings();
+    settings.customSlashCommands = commands;
     await this.saveSettings(settings);
   }
 

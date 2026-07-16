@@ -7,7 +7,7 @@
 import React, { RefObject, useState, useEffect, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { QuickQuestion } from '@/types';
+import { QuickQuestion, CustomSlashCommand } from '@/types';
 import { Send, Loader2, X, Brain } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -34,6 +34,8 @@ interface InputAreaProps {
   onSummarize: () => void;
   /** 是否有页面内容 */
   hasPageContent: boolean;
+  /** 用户自定义的斜杠 / 指令列表 */
+  customSlashCommands?: CustomSlashCommand[];
   /** textarea ref，用于 ask 任务时自动聚焦 */
   textareaRef: RefObject<HTMLTextAreaElement>;
 }
@@ -56,45 +58,59 @@ export const InputArea: React.FC<InputAreaProps> = ({
   onSend,
   onSummarize,
   hasPageContent,
+  customSlashCommands = [],
   textareaRef,
 }) => {
   const [selectedIndex, setSelectedIndex] = useState(0);
 
   // 定义所有可用的 AI 命令
-  const COMMANDS = useMemo(() => [
-    {
-      id: 'summary',
-      icon: '📝',
-      label: '总结当前网页',
-      alias: ['zj', 'zongjie', 'summary', '总结', 'zjym'],
+  const COMMANDS = useMemo(() => {
+    const systemCmds = [
+      {
+        id: 'summary',
+        icon: '📝',
+        label: '总结当前网页',
+        alias: ['zj', 'zongjie', 'summary', '总结', 'zjym'],
+        disabled: !hasPageContent,
+        action: () => onSummarize()
+      },
+      {
+        id: 'keypoints',
+        icon: '📌',
+        label: '提炼核心观点',
+        alias: ['ld', 'tl', 'keypoints', 'core', '核心', '重点', '提炼'],
+        disabled: !hasPageContent,
+        action: () => onSend('请以极简的结构化要点，提炼当前网页的核心观点和关键事实。')
+      },
+      {
+        id: 'explain',
+        icon: '💡',
+        label: '给小白解释',
+        alias: ['xb', 'explain', 'simplfy', '小白', '解释'],
+        disabled: !hasPageContent,
+        action: () => onSend('请用极其通俗易懂、连小学生都能听懂的语言，解释这篇文章的核心内容。')
+      },
+      {
+        id: 'ask',
+        icon: '❓',
+        label: '基于当前网页提问',
+        alias: ['tw', 'ask', 'question', '提问', '基于', 'jw'],
+        disabled: !hasPageContent,
+        action: () => {} // 特殊逻辑
+      }
+    ];
+
+    const userCmds = customSlashCommands.map(cmd => ({
+      id: cmd.id,
+      icon: '⚙️',
+      label: cmd.label,
+      alias: [cmd.id, cmd.label],
       disabled: !hasPageContent,
-      action: () => onSummarize()
-    },
-    {
-      id: 'keypoints',
-      icon: '📌',
-      label: '提炼核心观点',
-      alias: ['ld', 'tl', 'keypoints', 'core', '核心', '重点', '提炼'],
-      disabled: !hasPageContent,
-      action: () => onSend('请以极简的结构化要点，提炼当前网页的核心观点和关键事实。')
-    },
-    {
-      id: 'explain',
-      icon: '💡',
-      label: '给小白解释',
-      alias: ['xb', 'explain', 'simplfy', '小白', '解释'],
-      disabled: !hasPageContent,
-      action: () => onSend('请用极其通俗易懂、连小学生都能听懂的语言，解释这篇文章的核心内容。')
-    },
-    {
-      id: 'ask',
-      icon: '❓',
-      label: '基于当前网页提问',
-      alias: ['tw', 'ask', 'question', '提问', '基于', 'jw'],
-      disabled: !hasPageContent,
-      action: () => {} // 特殊逻辑
-    }
-  ], [onSummarize, onSend, hasPageContent]);
+      action: () => onSend(cmd.prompt)
+    }));
+
+    return [...systemCmds, ...userCmds];
+  }, [onSummarize, onSend, hasPageContent, customSlashCommands]);
 
   // 判断是否应该显示指令面板
   const showPalette = useMemo(() => {

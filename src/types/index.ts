@@ -60,6 +60,8 @@ export interface AppSettings {
   assistantDisplayMode?: AssistantDisplayMode;
   /** 浮窗主按钮点击行为 */
   floatButtonClickAction?: FloatButtonClickAction;
+  /** 用户自定义的斜杠 / 指令列表 */
+  customSlashCommands?: CustomSlashCommand[];
 }
 
 /**
@@ -150,5 +152,17 @@ export interface QuickQuestion {
   /** 显示名称（简短，用于按钮展示） */
   label: string;
   /** 完整的提示词模板，使用 {{text}} 作为选中文本的占位符 */
+  prompt: string;
+}
+
+/**
+ * 用户自定义的斜杠 / 指令
+ */
+export interface CustomSlashCommand {
+  /** 命令后缀 (例如 'code' 代表用户输入 /code 触发) */
+  id: string;
+  /** 显示名称 (简短，用于在指令面板中展示，如 '提取代码') */
+  label: string;
+  /** 完整的 Prompt 模板 */
   prompt: string;
 }

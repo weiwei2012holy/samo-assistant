@@ -87,6 +87,7 @@ export const App: React.FC<AppProps> = ({
     updateFloatButtonClickAction,
     updateTranslateShortcut,
     updateQuickQuestions,
+    updateCustomSlashCommands,
     isConfigValid,
   } = useSettings();
 
@@ -285,6 +286,8 @@ export const App: React.FC<AppProps> = ({
         onUpdateFloatButtonClickAction={updateFloatButtonClickAction}
         enableSuggestedQuestions={settings.enableSuggestedQuestions}
         onUpdateEnableSuggestedQuestions={updateEnableSuggestedQuestions}
+        customSlashCommands={settings.customSlashCommands}
+        onUpdateCustomSlashCommands={updateCustomSlashCommands}
       />
     );
   }
@@ -510,6 +513,7 @@ export const App: React.FC<AppProps> = ({
         onSend={handleSendMessage}
         onSummarize={handleSummarize}
         hasPageContent={!!pageContent?.content}
+        customSlashCommands={settings.customSlashCommands || []}
         textareaRef={textareaRef}
       />
     </div>

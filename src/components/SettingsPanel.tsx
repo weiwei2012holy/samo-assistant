@@ -18,10 +18,11 @@ import {
   QuickQuestion,
   AssistantDisplayMode,
   FloatButtonClickAction,
+  CustomSlashCommand,
 } from '@/types';
 import { PROVIDER_DEFINITIONS } from '@/config/providers';
 import { aiService } from '@/services/ai';
-import { ArrowLeft, Eye, EyeOff, Save, Check, RefreshCw, Loader2, Plus, Trash2, Pencil, MessageSquare } from 'lucide-react';
+import { ArrowLeft, Eye, EyeOff, Save, Check, RefreshCw, Loader2, Plus, Trash2, Pencil, MessageSquare, Brain } from 'lucide-react';
 
 interface SettingsPanelProps {
   /** 当前供应商配置 */
@@ -52,6 +53,10 @@ interface SettingsPanelProps {
   enableSuggestedQuestions?: boolean;
   /** 更新“猜你想问”引导问题开关 */
   onUpdateEnableSuggestedQuestions?: (enabled: boolean) => Promise<void>;
+  /** 用户自定义的斜杠 / 指令列表 */
+  customSlashCommands?: CustomSlashCommand[];
+  /** 更新用户自定义指令的回调 */
+  onUpdateCustomSlashCommands?: (commands: CustomSlashCommand[]) => Promise<void>;
 }
 
 /**
@@ -72,6 +77,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
   onUpdateFloatButtonClickAction,
   enableSuggestedQuestions = true,
   onUpdateEnableSuggestedQuestions,
+  customSlashCommands = [],
+  onUpdateCustomSlashCommands,
 }) => {
   // 表单状态
   const [provider, setProvider] = useState<ModelProvider>(config.provider);
@@ -219,6 +226,53 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
       quickQuestions.map(q => q.id === editingQuestion.id ? editingQuestion : q)
     );
     setEditingQuestion(null);
+  };
+
+  // 自定义命令表单状态
+  const [showAddCmdForm, setShowAddCmdForm] = useState(false);
+  const [newCmdId, setNewCmdId] = useState('');
+  const [newCmdLabel, setNewCmdLabel] = useState('');
+  const [newCmdPrompt, setNewCmdPrompt] = useState('');
+  const [editingCmd, setEditingCmd] = useState<CustomSlashCommand | null>(null);
+
+  // 添加自定义斜杠指令
+  const handleAddCmd = async () => {
+    const id = newCmdId.trim().toLowerCase().replace(/[^a-z0-9]/g, ''); // 仅限小写字母数字
+    if (!id || !newCmdLabel.trim() || !newCmdPrompt.trim() || !onUpdateCustomSlashCommands) return;
+    
+    if (customSlashCommands.some(c => c.id === id)) {
+      alert('已存在相同指令后缀！');
+      return;
+    }
+
+    const newCmd: CustomSlashCommand = {
+      id,
+      label: newCmdLabel.trim(),
+      prompt: newCmdPrompt.trim(),
+    };
+    await onUpdateCustomSlashCommands([...customSlashCommands, newCmd]);
+    setNewCmdId('');
+    setNewCmdLabel('');
+    setNewCmdPrompt('');
+    setShowAddCmdForm(false);
+  };
+
+  // 删除自定义斜杠指令
+  const handleDeleteCmd = async (id: string) => {
+    if (!onUpdateCustomSlashCommands) return;
+    await onUpdateCustomSlashCommands(customSlashCommands.filter(c => c.id !== id));
+  };
+
+  // 保存编辑的自定义斜杠指令
+  const handleSaveCmdEdit = async () => {
+    if (!editingCmd || !onUpdateCustomSlashCommands) return;
+    const cleanId = editingCmd.id.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+    if (!cleanId || !editingCmd.label.trim() || !editingCmd.prompt.trim()) return;
+
+    await onUpdateCustomSlashCommands(
+      customSlashCommands.map(c => c.id === editingCmd.id ? { ...editingCmd, id: cleanId } : c)
+    );
+    setEditingCmd(null);
   };
 
   return (
@@ -592,6 +646,169 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
               <p className="text-xs text-muted-foreground">
                 💡 在提示词中使用 <code className="bg-muted px-1 rounded">{'{{text}}'}</code> 代表选中的文本
               </p>
+            </CardContent>
+          </Card>
+
+          {/* 自定义斜杠指令配置 */}
+          <Card>
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <Brain className="h-4 w-4" />
+                    自定义斜杠指令
+                  </CardTitle>
+                  <CardDescription>
+                    配置在输入框键入 / 唤出的 AI 快捷指令
+                  </CardDescription>
+                </div>
+                {!showAddCmdForm && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setShowAddCmdForm(true)}
+                    title="添加指令"
+                  >
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {/* 添加表单 */}
+              {showAddCmdForm && (
+                <div className="p-3 border rounded-lg bg-muted/40 space-y-3">
+                  <div className="space-y-2">
+                    <Input
+                      value={newCmdId}
+                      onChange={(e) => setNewCmdId(e.target.value)}
+                      placeholder="指令后缀 (仅限小写英文数字，如 summary)"
+                      className="h-8 text-sm"
+                    />
+                    <Input
+                      value={newCmdLabel}
+                      onChange={(e) => setNewCmdLabel(e.target.value)}
+                      placeholder="显示名称 (简短，如 一键总结)"
+                      className="h-8 text-sm"
+                    />
+                    <textarea
+                      value={newCmdPrompt}
+                      onChange={(e) => setNewCmdPrompt(e.target.value)}
+                      placeholder="发送给 AI 的指令 (Prompt)"
+                      className="w-full min-h-[60px] p-2 border rounded-md text-xs bg-background resize-none outline-none focus:ring-1 focus:ring-primary/20"
+                    />
+                  </div>
+                  <div className="flex gap-2 justify-end">
+                    <Button
+                      size="sm"
+                      onClick={handleAddCmd}
+                      disabled={!newCmdId.trim() || !newCmdLabel.trim() || !newCmdPrompt.trim()}
+                      className="h-7 text-xs px-3"
+                    >
+                      添加
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setShowAddCmdForm(false);
+                        setNewCmdId('');
+                        setNewCmdLabel('');
+                        setNewCmdPrompt('');
+                      }}
+                      className="h-7 text-xs"
+                    >
+                      取消
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {/* 自定义命令列表 */}
+              {customSlashCommands.length === 0 && !showAddCmdForm && (
+                <p className="text-sm text-muted-foreground text-center py-4">
+                  暂无自定义指令，点击右上角 + 添加
+                </p>
+              )}
+
+              <div className="space-y-2.5">
+                {customSlashCommands.map((cmd) => (
+                  <div
+                    key={cmd.id}
+                    className="flex items-start gap-2 p-2 border rounded-lg hover:bg-muted/50 transition-colors"
+                  >
+                    {editingCmd?.id === cmd.id ? (
+                      // 编辑状态
+                      <div className="flex-1 space-y-2">
+                        <Input
+                          value={editingCmd.id}
+                          disabled
+                          placeholder="指令后缀"
+                          className="h-8 text-sm opacity-60"
+                        />
+                        <Input
+                          value={editingCmd.label}
+                          onChange={(e) => setEditingCmd({...editingCmd, label: e.target.value})}
+                          placeholder="显示名称"
+                          className="h-8 text-sm"
+                        />
+                        <textarea
+                          value={editingCmd.prompt}
+                          onChange={(e) => setEditingCmd({...editingCmd, prompt: e.target.value})}
+                          placeholder="指令 Prompt"
+                          className="w-full min-h-[60px] p-2 border rounded-md text-xs bg-background resize-none outline-none focus:ring-1 focus:ring-primary/20"
+                        />
+                        <div className="flex gap-2 justify-end">
+                          <Button size="sm" onClick={handleSaveCmdEdit} className="h-7 text-xs px-3">
+                            保存
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setEditingCmd(null)}
+                            className="h-7 text-xs"
+                          >
+                            取消
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      // 显示状态
+                      <>
+                        <div className="flex-1 min-w-0">
+                          <div className="font-semibold text-sm flex items-center gap-1.5 text-foreground/90 font-mono">
+                            <span className="text-primary text-xs bg-primary/5 border border-primary/20 px-1.5 py-0.5 rounded">
+                              /{cmd.id}
+                            </span>
+                            <span>{cmd.label}</span>
+                          </div>
+                          <div className="text-xs text-muted-foreground mt-1 line-clamp-2" title={cmd.prompt}>
+                            {cmd.prompt}
+                          </div>
+                        </div>
+                        <div className="flex gap-1 flex-shrink-0">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6 rounded-md hover:bg-muted"
+                            onClick={() => setEditingCmd(cmd)}
+                          >
+                            <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6 text-destructive hover:text-destructive hover:bg-destructive/10 rounded-md"
+                            onClick={() => handleDeleteCmd(cmd.id)}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                ))}
+              </div>
             </CardContent>
           </Card>
         </div>

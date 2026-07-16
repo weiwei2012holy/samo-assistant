@@ -12,6 +12,7 @@ import {
   QuickQuestion,
   AssistantDisplayMode,
   FloatButtonClickAction,
+  CustomSlashCommand,
 } from '@/types';
 import { storageService, DEFAULT_SETTINGS } from '@/services/storage';
 
@@ -135,6 +136,12 @@ export function useSettings() {
     await saveSettings(newSettings);
   }, [settings, saveSettings]);
 
+  // 更新用户自定义斜杠 / 指令列表
+  const updateCustomSlashCommands = useCallback(async (commands: CustomSlashCommand[]) => {
+    const newSettings = { ...settings, customSlashCommands: commands };
+    await saveSettings(newSettings);
+  }, [settings, saveSettings]);
+
   // 更新助手打开方式
   const updateAssistantDisplayMode = useCallback(async (mode: AssistantDisplayMode) => {
     const newSettings = { ...settings, assistantDisplayMode: mode };
@@ -165,6 +172,7 @@ export function useSettings() {
     updateEnableSuggestedQuestions,
     updateTranslateShortcut,
     updateQuickQuestions,
+    updateCustomSlashCommands,
     updateAssistantDisplayMode,
     updateFloatButtonClickAction,
     isConfigValid,
