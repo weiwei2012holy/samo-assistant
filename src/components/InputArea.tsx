@@ -140,6 +140,21 @@ export const InputArea: React.FC<InputAreaProps> = ({
     setSelectedIndex(0);
   }, [filteredCommands.length]);
 
+  // 处理点击左侧斜杠按钮的交互（支持鼠标点击唤出指令菜单）
+  const handleSlashIconClick = () => {
+    if (chatLoading || !configValid) return;
+    if (input.startsWith('/')) {
+      setInput('');
+    } else {
+      setInput('/');
+      setTimeout(() => {
+        if (textareaRef.current) {
+          textareaRef.current.focus();
+        }
+      }, 50);
+    }
+  };
+
   const handleExecuteCommand = (cmd: typeof COMMANDS[0]) => {
     if (cmd.id === 'ask') {
       setInput('/ask ');
@@ -290,8 +305,23 @@ export const InputArea: React.FC<InputAreaProps> = ({
       {/* 一体化 Focus Bar */}
       <form
         onSubmit={handleSubmit}
-        className="relative flex items-end gap-2 bg-muted/40 border border-input rounded-xl pl-3 pr-2 py-1.5 transition-all duration-200 focus-within:border-primary/40 focus-within:ring-1 focus-within:ring-primary/20"
+        className="relative flex items-end gap-2 bg-muted/40 border border-input rounded-xl pl-2 pr-2 py-1.5 transition-all duration-200 focus-within:border-primary/40 focus-within:ring-1 focus-within:ring-primary/20"
       >
+        {/* 鼠标点击唤出命令的快捷按钮 */}
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          onClick={handleSlashIconClick}
+          disabled={chatLoading || !configValid}
+          className={cn(
+            "h-7 w-7 rounded-lg text-muted-foreground hover:text-foreground flex-shrink-0 mb-0.5 hover:bg-muted/80",
+            input.startsWith('/') && "text-primary hover:text-primary bg-muted"
+          )}
+          title="点击唤出命令菜单"
+        >
+          <span className="font-mono text-sm font-semibold">/</span>
+        </Button>
         <textarea
           ref={textareaRef}
           value={input}
