@@ -109,37 +109,18 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
   const [newQuestionPrompt, setNewQuestionPrompt] = useState('');
   const [showAddForm, setShowAddForm] = useState(false);
 
-  // 默认翻译语言自定义选项状态
-  const PRESET_LANGUAGES = useMemo(() => ['system', 'zh', 'zh-TW', 'en', 'ja', 'ko', 'fr', 'es', 'de'], []);
-  const isCustomLang = !PRESET_LANGUAGES.includes(defaultTranslateLanguage);
-  const [showCustomLangInput, setShowCustomLangInput] = useState(isCustomLang);
-  const [customLangValue, setCustomLangValue] = useState(isCustomLang ? defaultTranslateLanguage : '');
-
-  // 监听外部默认翻译语言的变化同步状态
-  useEffect(() => {
-    const isCustom = !PRESET_LANGUAGES.includes(defaultTranslateLanguage);
-    setShowCustomLangInput(isCustom);
-    if (isCustom) {
-      setCustomLangValue(defaultTranslateLanguage);
-    }
-  }, [defaultTranslateLanguage, PRESET_LANGUAGES]);
-
-  const handleTranslateLangSelect = (val: string) => {
-    if (val === 'custom') {
-      setShowCustomLangInput(true);
-      const initialVal = customLangValue || '文言文';
-      setCustomLangValue(initialVal);
-      onUpdateDefaultTranslateLanguage?.(initialVal);
-    } else {
-      setShowCustomLangInput(false);
-      onUpdateDefaultTranslateLanguage?.(val);
-    }
-  };
-
-  const handleTranslateLangInput = (val: string) => {
-    setCustomLangValue(val);
-    onUpdateDefaultTranslateLanguage?.(val);
-  };
+  // 默认翻译语言选项
+  const translateLanguageOptions = useMemo(() => [
+    { value: 'system', label: '系统语言 (自动匹配)' },
+    { value: 'zh', label: '中文 (简体)' },
+    { value: 'zh-TW', label: '中文 (繁体)' },
+    { value: 'en', label: '英文' },
+    { value: 'ja', label: '日语' },
+    { value: 'ko', label: '韩语' },
+    { value: 'fr', label: '法语' },
+    { value: 'es', label: '西班牙语' },
+    { value: 'de', label: '德语' },
+  ], []);
 
   // 获取当前供应商选项
   const currentProviderOption = PROVIDER_DEFINITIONS.find(p => p.value === provider);
@@ -476,38 +457,18 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
             <CardHeader className="pb-3">
               <CardTitle className="text-base">默认翻译语言</CardTitle>
               <CardDescription>
-                快捷划词翻译或斜杠指令翻译当前网页时所使用的目标语言
+                快捷划词翻译或斜杠指令翻译当前网页时所使用的目标语言，可选择或直接输入修改
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <Select
-                value={showCustomLangInput ? 'custom' : defaultTranslateLanguage}
-                onChange={(e) => {
-                  handleTranslateLangSelect(e.target.value);
+              <Combobox
+                value={defaultTranslateLanguage}
+                onChange={(val) => {
+                  onUpdateDefaultTranslateLanguage?.(val);
                 }}
-                options={[
-                  { value: 'system', label: '系统语言 (自动匹配)' },
-                  { value: 'zh', label: '中文 (简体)' },
-                  { value: 'zh-TW', label: '中文 (繁体)' },
-                  { value: 'en', label: '英文' },
-                  { value: 'ja', label: '日语' },
-                  { value: 'ko', label: '韩语' },
-                  { value: 'fr', label: '法语' },
-                  { value: 'es', label: '西班牙语' },
-                  { value: 'de', label: '德语' },
-                  { value: 'custom', label: '自定义...' },
-                ]}
+                options={translateLanguageOptions}
+                placeholder="选择或输入翻译语言名称 (例如：粤语、文言文)"
               />
-              {showCustomLangInput && (
-                <div className="mt-2.5 animate-in fade-in slide-in-from-top-1 duration-150">
-                  <Input
-                    value={customLangValue}
-                    onChange={(e) => handleTranslateLangInput(e.target.value)}
-                    placeholder="输入目标语言，如 文言文、粤语、四川话"
-                    className="h-8 text-sm"
-                  />
-                </div>
-              )}
             </CardContent>
           </Card>
 
