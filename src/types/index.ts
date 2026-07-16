@@ -1,7 +1,7 @@
 /**
  * @Author wei
- * @Date 2026-02-07
- * @Description 应用类型定义
+ * @Date 2026-07-16
+ * @Description 应用类型定义，新增猜你想问设置项
  **/
 
 /**
@@ -50,6 +50,8 @@ export interface AppSettings {
   theme: 'light' | 'dark' | 'system';
   /** 是否启用思考模式（用于 DeepSeek Reasoner 等模型） */
   enableReasoning: boolean;
+  /** 是否启用“猜你想问”引导问题 */
+  enableSuggestedQuestions?: boolean;
   /** 悬停翻译快捷键（默认 Control） */
   translateShortcut?: string;
   /** 常用问题/提示词列表 */

@@ -21,6 +21,7 @@ function generateId(): string {
 interface TabChatState {
   messages: ChatMessage[];
   error: string | null;
+  suggestedQuestions?: string[];
 }
 
 // 全局存储各 tab 的对话状态
@@ -31,6 +32,28 @@ const loadingTabs = new Set<number>();
 
 // 各 tab 当前流式输出的已积累内容（切换回来时恢复进度）
 const tabStreamingStates = new Map<number, string>();
+
+/**
+ * 容错性解析 JSON 的辅助函数，尝试从各类包裹或非规范格式中恢复追问问题数组
+ */
+function parseQuestionsFromJson(content: string): string[] {
+  const text = content.trim();
+  try {
+    // 移除 markdown 代码块包裹
+    const cleanJson = text.replace(/```json/g, '').replace(/```/g, '').trim();
+    const parsed = JSON.parse(cleanJson);
+    if (Array.isArray(parsed)) {
+      return parsed.slice(0, 3).map(q => String(q).trim());
+    }
+  } catch {
+    // 正则匹配作为后备容错：匹配 ["..."] 或列表样式
+    const matched = text.match(/(?<=\d\.\s*|[-*]\s*)[^\n\r]+|(?<=")[^",\n\r]+(?=")/g);
+    if (matched && matched.length >= 3) {
+      return matched.map(q => q.trim()).slice(0, 3);
+    }
+  }
+  return [];
+}
 
 /** 已从 storage 加载过的 url 集合，避免重复读取 */
 const hydratedUrls = new Set<string>();
@@ -96,7 +119,8 @@ export function useChat(
   providerConfig: ProviderConfig,
   enableReasoning: boolean = false,
   tabId: number | null = null,
-  currentUrl: string | null = null
+  currentUrl: string | null = null,
+  enableSuggestedQuestions: boolean = true
 ) {
   // 从全局状态获取当前 tab 的对话，或使用空数组
   const getTabState = useCallback((): TabChatState => {
@@ -110,6 +134,7 @@ export function useChat(
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(() => getTabState().error);
   const [streamingContent, setStreamingContent] = useState('');
+  const [suggestedQuestions, setSuggestedQuestions] = useState<string[]>(() => getTabState().suggestedQuestions || []);
   // storage 里读到的历史记录（尚未恢复到当前会话），供用户手动恢复
   const [savedMessages, setSavedMessages] = useState<ChatMessage[]>([]);
 
@@ -124,6 +149,7 @@ export function useChat(
 
     setStreamingContent('');
     setIsLoading(false);
+    setSuggestedQuestions([]);
     setSavedMessages([]);
 
     if (tabId === null || currentUrl === null) {
@@ -137,6 +163,7 @@ export function useChat(
       console.log('[useChat] 从内存恢复', { url: currentUrl, count: state.messages.length });
       setMessages(state.messages);
       setError(state.error);
+      setSuggestedQuestions(state.suggestedQuestions || []);
       if (loadingTabs.has(tabId)) {
         setIsLoading(true);
         const savedStreaming = tabStreamingStates.get(tabId);
@@ -162,9 +189,11 @@ export function useChat(
   }, [tabId, currentUrl, getTabState]);
 
   // 保存当前 tab 的对话状态，同时按 URL 持久化
-  const saveTabState = useCallback((newMessages: ChatMessage[], newError: string | null) => {
+  const saveTabState = useCallback((newMessages: ChatMessage[], newError: string | null, newQuestions?: string[]) => {
     if (tabId !== null) {
-      tabChatStates.set(tabId, { messages: newMessages, error: newError });
+      const existing = tabChatStates.get(tabId);
+      const questions = newQuestions !== undefined ? newQuestions : (existing?.suggestedQuestions || []);
+      tabChatStates.set(tabId, { messages: newMessages, error: newError, suggestedQuestions: questions });
       if (currentUrl !== null) {
         persistMessages(currentUrl, newMessages);
       }
@@ -216,6 +245,7 @@ export function useChat(
     setIsLoading(true);
     setError(null);
     setStreamingContent('');
+    setSuggestedQuestions([]);
 
     try {
       // 构建系统提示词
@@ -254,20 +284,24 @@ export function useChat(
         createdAt: Date.now(),
       };
 
-      // 已切换到其他 tab：直接写入 Map 保留历史，不更新当前可见视图
+      // 已切换到其他 tab：直接写入 Map 保留历史，不更新当前可见视图并异步生成引导问题
       if (tabIdRef.current !== requestTabId) {
         if (requestTabId !== null) {
           const state = tabChatStates.get(requestTabId) || { messages: [], error: null };
+          const updatedMessages = [...state.messages, assistantMessage];
           tabChatStates.set(requestTabId, {
-            messages: [...state.messages, assistantMessage],
+            messages: updatedMessages,
             error: null,
+            suggestedQuestions: state.suggestedQuestions,
           });
+          generateSuggestedQuestions(updatedMessages, pageContext);
         }
         return;
       }
 
       updateMessages(prev => [...prev, assistantMessage]);
       setStreamingContent('');
+      generateSuggestedQuestions([...currentMessages, assistantMessage], pageContext);
     } catch (err) {
       // 忽略取消错误
       if (err instanceof Error && err.name === 'AbortError') return;
@@ -314,6 +348,7 @@ export function useChat(
     setIsLoading(true);
     setError(null);
     setStreamingContent('');
+    setSuggestedQuestions([]);
 
     try {
       // 添加系统消息表示开始总结
@@ -356,20 +391,24 @@ export function useChat(
         createdAt: Date.now(),
       };
 
-      // 已切换到其他 tab：只写入 Map，不更新当前可见视图
+      // 已切换到其他 tab：只写入 Map，不更新当前可见视图并异步生成引导问题
       if (tabIdRef.current !== requestTabId) {
         if (requestTabId !== null) {
           const state = tabChatStates.get(requestTabId) || { messages: [], error: null };
+          const updatedMessages = [...state.messages, assistantMessage];
           tabChatStates.set(requestTabId, {
-            messages: [...state.messages, assistantMessage],
+            messages: updatedMessages,
             error: null,
+            suggestedQuestions: state.suggestedQuestions,
           });
+          generateSuggestedQuestions(updatedMessages, pageContent);
         }
         return;
       }
 
       updateMessages(prev => [...prev, assistantMessage]);
       setStreamingContent('');
+      generateSuggestedQuestions([userMessage, assistantMessage], pageContent);
     } catch (err) {
       // 忽略取消错误
       if (err instanceof Error && err.name === 'AbortError') return;
@@ -394,6 +433,65 @@ export function useChat(
       }
     }
   }, [tabId, providerConfig, enableReasoning, updateMessages, saveTabState]);
+
+  // 异步生成引导性问题
+  const generateSuggestedQuestions = useCallback(async (
+    history: ChatMessage[],
+    pageContext?: string
+  ) => {
+    if (!enableSuggestedQuestions || history.length === 0) return;
+    const requestTabId = tabId;
+
+    try {
+      let suggestSystemPrompt = `你是一个智能追问生成助手。请基于当前网页的内容摘要（若有）以及刚刚的对话历史，生成三个用户接下来最可能想继续提问的、具有针对性的后续问题。
+返回要求：
+1. 必须是中文，且表述要极其简洁、自然，像用户的真实口吻。
+2. 每一个问题必须控制在 22 个字以内，并且必须是疑问句。
+3. 必须严格以 JSON 数组格式返回，例如：["问题 1", "问题 2", "问题 3"]。不要包含任何 Markdown 语法标记（如 \`\`\`json），以及任何多余的前言、后记或解释。`;
+
+      if (pageContext) {
+        suggestSystemPrompt += `\n\n当前网页内容摘要：\n${pageContext.slice(0, 5000)}`;
+      }
+
+      const lastMessage = history[history.length - 1];
+      if (lastMessage?.role !== 'assistant') return;
+
+      const response = await aiService.chat(
+        providerConfig,
+        history,
+        suggestSystemPrompt,
+        undefined, // 非流式
+        false // 无需开启思考模式
+      );
+
+      // 已切换到其他 tab：只写入 Map，不更新当前可见视图
+      if (tabIdRef.current !== requestTabId) {
+        if (requestTabId !== null) {
+          const state = tabChatStates.get(requestTabId);
+          if (state) {
+            tabChatStates.set(requestTabId, {
+              ...state,
+              suggestedQuestions: parseQuestionsFromJson(response.content)
+            });
+          }
+        }
+        return;
+      }
+
+      const questions = parseQuestionsFromJson(response.content);
+      if (questions.length > 0) {
+        setSuggestedQuestions(questions);
+        if (requestTabId !== null) {
+          const state = tabChatStates.get(requestTabId);
+          if (state) {
+            tabChatStates.set(requestTabId, { ...state, suggestedQuestions: questions });
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('生成猜你想问引导问题失败:', err);
+    }
+  }, [tabId, providerConfig, enableSuggestedQuestions]);
 
   // 清除聊天历史（同时清除该 URL 的持久化记录）
   const clearMessages = useCallback(() => {
@@ -436,6 +534,7 @@ export function useChat(
     isLoading,
     error,
     streamingContent,
+    suggestedQuestions,
     sendMessage,
     summarizePage,
     clearMessages,

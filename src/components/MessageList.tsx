@@ -1,7 +1,7 @@
 /**
  * @Author wei
- * @Date 2026-02-24
- * @Description 消息列表组件 - 展示对话消息、流式输出和加载状态
+ * @Date 2026-07-16
+ * @Description 消息列表组件 - 展示对话消息、流式输出、加载状态以及猜你想问引导选项
  *
  * 包含三个子组件：
  *  - MessageList：滚动容器，汇总所有消息相关 UI
@@ -36,6 +36,10 @@ interface MessageListProps {
   onSummarize: () => void;
   /** 自动滚动锚点 ref */
   messagesEndRef: RefObject<HTMLDivElement>;
+  /** “猜你想问”引导性问题列表 */
+  suggestedQuestions?: string[];
+  /** 点击引导性问题回调 */
+  onSelectQuestion?: (question: string) => void;
 }
 
 /**
@@ -58,6 +62,8 @@ export const MessageList: React.FC<MessageListProps> = ({
   configValid,
   onSummarize,
   messagesEndRef,
+  suggestedQuestions = [],
+  onSelectQuestion,
 }) => {
   return (
     <ScrollArea className="flex-1 p-3">
@@ -110,6 +116,27 @@ export const MessageList: React.FC<MessageListProps> = ({
           <div className="flex items-center gap-2 p-3 rounded-lg bg-destructive/10 text-destructive text-sm">
             <AlertCircle className="h-4 w-4 flex-shrink-0" />
             <span>{chatError || pageError}</span>
+          </div>
+        )}
+
+        {/* 猜你想问的引导问题 */}
+        {!chatLoading && !streamingContent && messages.length > 0 && messages[messages.length - 1].role === 'assistant' && suggestedQuestions.length > 0 && (
+          <div className="flex flex-col gap-2 pl-9 pr-8 mt-2 animate-fade-in">
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground font-medium mb-1">
+              <Sparkles className="h-3.5 w-3.5 text-primary animate-pulse" />
+              <span>猜你想问：</span>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {suggestedQuestions.map((q, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => onSelectQuestion?.(q)}
+                  className="text-left px-3 py-1.5 text-xs rounded-full border border-primary/25 bg-primary/5 hover:bg-primary/10 hover:border-primary/45 active:bg-primary/20 text-foreground transition-all duration-150 shadow-sm"
+                >
+                  {q}
+                </button>
+              ))}
+            </div>
           </div>
         )}
 

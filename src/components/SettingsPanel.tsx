@@ -1,7 +1,7 @@
 /**
  * @Author wei
- * @Date 2026-02-07
- * @Description 设置面板组件，用于配置大模型供应商和 API 密钥
+ * @Date 2026-07-16
+ * @Description 设置面板组件，用于配置大模型供应商、API 密钥以及通用设置（如猜你想问等）
  **/
 
 import React, { useState, useEffect, useRef } from 'react';
@@ -48,6 +48,10 @@ interface SettingsPanelProps {
   floatButtonClickAction?: FloatButtonClickAction;
   /** 更新浮窗主按钮点击行为 */
   onUpdateFloatButtonClickAction?: (action: FloatButtonClickAction) => Promise<void>;
+  /** 是否启用“猜你想问”引导问题 */
+  enableSuggestedQuestions?: boolean;
+  /** 更新“猜你想问”引导问题开关 */
+  onUpdateEnableSuggestedQuestions?: (enabled: boolean) => Promise<void>;
 }
 
 /**
@@ -62,10 +66,12 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
   onUpdateTranslateShortcut,
   quickQuestions = [],
   onUpdateQuickQuestions,
-  assistantDisplayMode = 'sidepanel',
+  assistantDisplayMode = 'overlay',
   onUpdateAssistantDisplayMode,
   floatButtonClickAction = 'open',
   onUpdateFloatButtonClickAction,
+  enableSuggestedQuestions = true,
+  onUpdateEnableSuggestedQuestions,
 }) => {
   // 表单状态
   const [provider, setProvider] = useState<ModelProvider>(config.provider);
@@ -421,6 +427,27 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                 ]}
               />
             </CardContent>
+          </Card>
+
+          {/* 猜你想问开关 */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center justify-between">
+                <span>猜你想问</span>
+                <label className="relative inline-flex items-center cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={enableSuggestedQuestions}
+                    onChange={(e) => onUpdateEnableSuggestedQuestions?.(e.target.checked)}
+                    className="sr-only peer"
+                  />
+                  <div className="w-9 h-5 bg-muted peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-background after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
+                </label>
+              </CardTitle>
+              <CardDescription>
+                AI 对话或总结完毕后，自动在对话底部生成 3 个引导问题
+              </CardDescription>
+            </CardHeader>
           </Card>
 
           {/* 常用问题配置 */}

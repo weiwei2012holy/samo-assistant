@@ -1,7 +1,7 @@
 /**
  * @Author wei
- * @Date 2026-02-07
- * @Description 侧边栏主应用组件 - 负责组装各子模块，业务逻辑下沉至 Hook / 组件
+ * @Date 2026-07-16
+ * @Description 侧边栏主应用组件 - 负责组装各子模块，新增了猜你想问引导选项的数据链传递支持
  *
  * 依赖关系：
  *  useSettings → usePageContent → useChat(tabId) → usePendingTask → useTabManager
@@ -83,6 +83,7 @@ export const App: React.FC<AppProps> = ({
     updateProviderConfig,
     getProviderConfig,
     updateEnableReasoning,
+    updateEnableSuggestedQuestions,
     updateAssistantDisplayMode,
     updateFloatButtonClickAction,
     updateTranslateShortcut,
@@ -105,13 +106,14 @@ export const App: React.FC<AppProps> = ({
     isLoading: chatLoading,
     error: chatError,
     streamingContent,
+    suggestedQuestions,
     sendMessage,
     summarizePage,
     clearMessages,
     savedMessages,
     restoreMessages,
     dismissSavedMessages,
-  } = useChat(settings.providerConfig, settings.enableReasoning, currentTabId, currentUrl);
+  } = useChat(settings.providerConfig, settings.enableReasoning, currentTabId, currentUrl, settings.enableSuggestedQuestions);
 
   // ── 任务调度（排他锁 + 延迟执行 + 消息监听） ─────────────────────────────
   const { resetPendingState } = usePendingTask({
@@ -280,6 +282,8 @@ export const App: React.FC<AppProps> = ({
         onUpdateAssistantDisplayMode={updateAssistantDisplayMode}
         floatButtonClickAction={settings.floatButtonClickAction || 'open'}
         onUpdateFloatButtonClickAction={updateFloatButtonClickAction}
+        enableSuggestedQuestions={settings.enableSuggestedQuestions}
+        onUpdateEnableSuggestedQuestions={updateEnableSuggestedQuestions}
       />
     );
   }
@@ -483,6 +487,8 @@ export const App: React.FC<AppProps> = ({
         configValid={configValid}
         onSummarize={handleSummarize}
         messagesEndRef={messagesEndRef}
+        suggestedQuestions={suggestedQuestions}
+        onSelectQuestion={handleSendMessage}
       />
 
       {/* 输入区域 */}

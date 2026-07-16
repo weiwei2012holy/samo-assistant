@@ -1,7 +1,7 @@
 /**
  * @Author wei
- * @Date 2026-02-07
- * @Description Chrome 存储服务，使用 chrome.storage.sync 同步用户配置
+ * @Date 2026-07-16
+ * @Description Chrome 存储服务，使用 chrome.storage.sync 同步用户配置，支持“猜你想问”设置
  **/
 
 import {
@@ -64,6 +64,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   providerConfigs: {},
   theme: 'system',
   enableReasoning: false,
+  enableSuggestedQuestions: true,
   assistantDisplayMode: 'overlay',
   floatButtonClickAction: 'open',
   translateShortcut: 'Control',
@@ -219,6 +220,16 @@ class StorageService {
   async updateEnableReasoning(enabled: boolean): Promise<void> {
     const settings = await this.getSettings();
     settings.enableReasoning = enabled;
+    await this.saveSettings(settings);
+  }
+
+  /**
+   * 更新猜你想问引导问题开关
+   * @param enabled - 是否启用
+   */
+  async updateEnableSuggestedQuestions(enabled: boolean): Promise<void> {
+    const settings = await this.getSettings();
+    settings.enableSuggestedQuestions = enabled;
     await this.saveSettings(settings);
   }
 

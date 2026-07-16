@@ -1,7 +1,7 @@
 /**
  * @Author wei
- * @Date 2026-02-07
- * @Description 设置 Hook，管理应用设置状态
+ * @Date 2026-07-16
+ * @Description 设置 Hook，管理应用设置状态，新增对“猜你想问”的设置项支持
  **/
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
@@ -118,6 +118,12 @@ export function useSettings() {
     await saveSettings(newSettings);
   }, [settings, saveSettings]);
 
+  // 更新猜你想问开关
+  const updateEnableSuggestedQuestions = useCallback(async (enabled: boolean) => {
+    const newSettings = { ...settings, enableSuggestedQuestions: enabled };
+    await saveSettings(newSettings);
+  }, [settings, saveSettings]);
+
   // 更新悬停翻译快捷键
   const updateTranslateShortcut = useCallback(async (shortcut: string) => {
     const newSettings = { ...settings, translateShortcut: shortcut };
@@ -156,6 +162,7 @@ export function useSettings() {
     switchProvider,
     updateTheme,
     updateEnableReasoning,
+    updateEnableSuggestedQuestions,
     updateTranslateShortcut,
     updateQuickQuestions,
     updateAssistantDisplayMode,
