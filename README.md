@@ -56,7 +56,7 @@ npm run dev:content
 
 ```bash
 # 自动递增版本号、进行生产编译并一键压缩输出 samo-assistant.zip
-GOPATH=/Users/yidejia/Project npm run package
+npm run package
 ```
 
 > [!TIP]
