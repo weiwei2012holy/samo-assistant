@@ -441,35 +441,10 @@ export const App: React.FC<AppProps> = ({
         </div>
       )}
 
-      {/* 恢复历史会话横幅：当前无消息但 storage 中有历史记录时显示 */}
-      {messages.length === 0 && savedMessages.length > 0 && (
-        <div className="flex items-center gap-2 p-3 mx-3 mt-3 rounded-lg bg-muted/60 border text-sm">
-          <span className="text-muted-foreground flex-1">
-            找到 {savedMessages.length} 条历史消息
-          </span>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-7 px-2 text-xs text-primary hover:text-primary"
-            onClick={restoreMessages}
-          >
-            加载会话
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-7 px-2 text-xs text-muted-foreground"
-            onClick={dismissSavedMessages}
-          >
-            忽略
-          </Button>
-        </div>
-      )}
-
       {/* 页面信息卡片 */}
       <div className="p-3 border-b">
         <Card className="bg-muted/30 border-muted/50 shadow-none rounded-xl">
-          <CardContent className="p-3">
+          <CardContent className="p-3 space-y-2.5">
             <div className="flex items-start gap-2">
               <div className="flex-1 min-w-0">
                 {pageContent ? (
@@ -518,6 +493,31 @@ export const App: React.FC<AppProps> = ({
                 )}
               </Button>
             </div>
+
+            {/* 恢复历史会话提示：收纳进网页卡片底部 */}
+            {messages.length === 0 && savedMessages.length > 0 && (
+              <div className="pt-2 border-t border-muted-foreground/15 flex items-center justify-between animate-fade-in">
+                <span className="text-[10px] text-muted-foreground font-medium">继续上次阅读？</span>
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 px-2 text-[10px] text-primary hover:text-primary-foreground hover:bg-primary rounded-md transition-all font-medium"
+                    onClick={restoreMessages}
+                  >
+                    恢复
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 px-2 text-[10px] text-muted-foreground hover:bg-muted hover:text-foreground rounded-md transition-all font-medium"
+                    onClick={dismissSavedMessages}
+                  >
+                    忽略
+                  </Button>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
