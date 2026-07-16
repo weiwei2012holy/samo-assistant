@@ -170,12 +170,12 @@ export const MessageBubble = memo<MessageBubbleProps>(({ message }) => {
   }, [message.content]);
 
   return (
-    <div className={cn('flex gap-2 group', isUser && 'flex-row-reverse')}>
+    <div className={cn('flex gap-3 group', isUser && 'flex-row-reverse')}>
       {/* 头像 */}
       <div
         className={cn(
           'flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center',
-          isUser ? 'bg-primary text-primary-foreground' : 'bg-muted'
+          isUser ? 'bg-primary text-primary-foreground' : 'bg-muted/70 text-muted-foreground'
         )}
       >
         {isUser ? <User className="h-4 w-4" /> : <Bot className="h-4 w-4" />}
@@ -184,31 +184,33 @@ export const MessageBubble = memo<MessageBubbleProps>(({ message }) => {
       {/* 消息内容 */}
       <div
         className={cn(
-          'flex-1 rounded-lg px-3 py-2 text-sm max-w-[85%]',
-          isUser ? 'bg-primary text-primary-foreground ml-8' : 'bg-muted mr-8'
+          'flex-1 text-sm break-words',
+          isUser 
+            ? 'bg-primary text-primary-foreground rounded-2xl px-3.5 py-2 max-w-[85%] ml-8 shadow-sm' 
+            : 'max-w-full mr-8 text-foreground/90 leading-relaxed'
         )}
       >
         {isUser ? (
           // 用户消息保持纯文本，避免 Markdown 误渲染
           <div className="whitespace-pre-wrap break-words">{message.content}</div>
         ) : (
-          // AI 消息：Markdown 渲染 + 底部复制按钮
+          // AI 消息：杂志排版，无背景色 + 底部靠右复制按钮
           <>
-            <div className="break-words">
+            <div className="prose prose-sm dark:prose-invert max-w-none">
               <Markdown content={message.content} />
             </div>
-            {/* 复制按钮：悬停气泡时显示，位于内容底部右侧 */}
-            <div className="flex justify-end mt-1 -mb-0.5 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+            {/* 复制按钮：悬停气泡时显示 */}
+            <div className="flex justify-end mt-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-5 w-5"
+                className="h-6 w-6 rounded-md hover:bg-muted active:bg-muted/80"
                 onClick={handleCopy}
                 title={copied ? '已复制' : '复制'}
               >
                 {copied
-                  ? <Check className="h-3 w-3 text-green-500" />
-                  : <Copy className="h-3 w-3 text-muted-foreground" />
+                  ? <Check className="h-3.5 w-3.5 text-green-500" />
+                  : <Copy className="h-3.5 w-3.5 text-muted-foreground" />
                 }
               </Button>
             </div>
@@ -233,18 +235,18 @@ interface StreamingBubbleProps {
  */
 export const StreamingBubble: React.FC<StreamingBubbleProps> = ({ content }) => {
   return (
-    <div className="flex gap-2">
+    <div className="flex gap-3">
       {/* 头像 */}
-      <div className="flex-shrink-0 w-7 h-7 rounded-full bg-muted flex items-center justify-center">
+      <div className="flex-shrink-0 w-7 h-7 rounded-full bg-muted/70 flex items-center justify-center text-muted-foreground">
         <Bot className="h-4 w-4" />
       </div>
 
-      {/* 消息内容 - 使用 Markdown 渲染 */}
-      <div className="flex-1 rounded-lg px-3 py-2 text-sm max-w-[85%] bg-muted mr-8">
-        <div className="break-words">
+      {/* 消息内容 - 使用 Markdown 渲染，无气泡背景 */}
+      <div className="flex-1 text-sm max-w-full mr-8 text-foreground/90 leading-relaxed">
+        <div className="break-words prose prose-sm dark:prose-invert max-w-none">
           <Markdown content={content} />
           {/* 闪烁光标 */}
-          <span className="inline-block w-1.5 h-4 ml-0.5 bg-foreground/70 animate-pulse align-middle" />
+          <span className="inline-block w-1.5 h-4 ml-0.5 bg-primary/70 animate-pulse align-middle rounded-sm" />
         </div>
       </div>
     </div>

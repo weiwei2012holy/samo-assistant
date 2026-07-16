@@ -25,7 +25,6 @@ import {
   Settings,
   Loader2,
   AlertCircle,
-  Globe,
   RefreshCw,
   Brain,
   Trash2,
@@ -33,11 +32,13 @@ import {
   LayoutPanelTop,
   AppWindow,
   PanelRight,
+  X,
 } from 'lucide-react';
 import { SettingsPanel } from '@/components/SettingsPanel';
 import { Tooltip } from '@/components/ui/tooltip';
 import { MessageList } from '@/components/MessageList';
 import { InputArea } from '@/components/InputArea';
+import { ScrollArea } from '@/components/ui/scroll-area';
 
 type View = 'main' | 'settings';
 
@@ -71,7 +72,24 @@ export const App: React.FC<AppProps> = ({
   const [pendingAskText, setPendingAskText] = useState<string | null>(null);
   // 切换显示方式下拉菜单
   const [showModeMenu, setShowModeMenu] = useState(false);
+  // ⌘K 行动菜单状态
+  const [showCommandMenu, setShowCommandMenu] = useState(false);
   const modeMenuRef = useRef<HTMLDivElement>(null);
+
+  // 监听全局 ⌘K 快捷键和 ESC 键
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        setShowCommandMenu(prev => !prev);
+      }
+      if (e.key === 'Escape') {
+        setShowCommandMenu(false);
+      }
+    };
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+  }, []);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -324,6 +342,24 @@ export const App: React.FC<AppProps> = ({
               </Button>
             </Tooltip>
 
+            {pageContent && configValid && (
+              <Tooltip content="重新总结页面">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={handleSummarize}
+                  disabled={chatLoading}
+                  className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                >
+                  {chatLoading ? (
+                    <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                  ) : (
+                    <RefreshCw className="h-4 w-4" />
+                  )}
+                </Button>
+              </Tooltip>
+            )}
+
             {messages.length > 0 && (
               <Tooltip content="清空对话">
                 <Button
@@ -432,29 +468,38 @@ export const App: React.FC<AppProps> = ({
 
       {/* 页面信息卡片 */}
       <div className="p-3 border-b">
-        <Card className="bg-muted/50">
+        <Card className="bg-muted/30 border-muted/50 shadow-none rounded-xl">
           <CardContent className="p-3">
             <div className="flex items-start gap-2">
-              <Globe className="h-4 w-4 text-muted-foreground flex-shrink-0 mt-0.5" />
               <div className="flex-1 min-w-0">
                 {pageContent ? (
-                  <>
-                    <h3 className="font-medium text-sm line-clamp-1">
-                      {pageContent.title || '无标题'}
-                    </h3>
-                    <a
-                      href={pageContent.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-xs text-muted-foreground hover:text-primary flex items-center gap-1 mt-0.5"
-                    >
-                      <span className="truncate">{new URL(pageContent.url).hostname}</span>
-                      <ExternalLink className="h-3 w-3 flex-shrink-0" />
-                    </a>
-                  </>
+                  <div className="space-y-1.5">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] text-primary/80 bg-primary/10 border border-primary/20 font-medium px-1.5 py-0.5 rounded flex-shrink-0">
+                        {new URL(pageContent.url).hostname}
+                      </span>
+                      <h3 className="font-semibold text-xs line-clamp-1 text-foreground/90">
+                        {pageContent.title || '无标题'}
+                      </h3>
+                    </div>
+                    {(() => {
+                      const wordCount = pageContent.content?.length || 0;
+                      const readTime = Math.ceil(wordCount / 400);
+                      const savedTime = Math.max(1, Math.round(readTime * 0.8));
+                      return (
+                        <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground font-mono">
+                          <span>✓ 已分析 {wordCount} 字</span>
+                          <span>•</span>
+                          <span>⏳ 预计读 {readTime} 分钟</span>
+                          <span>•</span>
+                          <span>⚡ AI 节省 {savedTime} 分钟</span>
+                        </div>
+                      );
+                    })()}
+                  </div>
                 ) : (
-                  <p className="text-sm text-muted-foreground">
-                    {pageLoading ? '正在获取页面...' : '无法获取页面内容'}
+                  <p className="text-xs text-muted-foreground py-1">
+                    {pageLoading ? '正在读取并分析当前网页...' : '暂时无法读取网页正文内容'}
                   </p>
                 )}
               </div>
@@ -463,12 +508,13 @@ export const App: React.FC<AppProps> = ({
                 size="icon"
                 onClick={() => fetchPageContent(currentTabId)}
                 disabled={pageLoading}
-                className="h-7 w-7 flex-shrink-0"
+                className="h-7 w-7 flex-shrink-0 hover:bg-muted active:bg-muted/80 rounded-md"
+                title="重新提取页面"
               >
                 {pageLoading ? (
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
                 ) : (
-                  <RefreshCw className="h-3.5 w-3.5" />
+                  <RefreshCw className="h-3.5 w-3.5 text-muted-foreground" />
                 )}
               </Button>
             </div>
@@ -502,11 +548,69 @@ export const App: React.FC<AppProps> = ({
         quickQuestions={settings.quickQuestions || []}
         onQuickQuestion={handleQuickQuestion}
         onSend={handleSendMessage}
-        onSummarize={handleSummarize}
-        hasMessages={messages.length > 0}
-        hasPageContent={!!pageContent?.content}
+        onOpenCommandMenu={() => setShowCommandMenu(prev => !prev)}
         textareaRef={textareaRef}
       />
+
+      {/* ⌘K 行动指令面板 */}
+      {showCommandMenu && (
+        <div className="absolute inset-0 z-50 bg-background/50 backdrop-blur-[2px] flex flex-col justify-end transition-all duration-300">
+          {/* 点击背景关闭 */}
+          <div className="absolute inset-0" onClick={() => setShowCommandMenu(false)} />
+          <div className="relative w-full bg-popover border-t rounded-t-2xl shadow-xl flex flex-col max-h-[75%] animate-in slide-in-from-bottom duration-200">
+            <div className="flex items-center justify-between px-4 py-3 border-b bg-muted/20">
+              <span className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5">
+                <Brain className="h-3.5 w-3.5 text-primary" />
+                Samo 行动面板
+              </span>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setShowCommandMenu(false)}
+                className="h-7 w-7 rounded-full hover:bg-muted"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            <ScrollArea className="flex-1 p-2">
+              <div className="space-y-1">
+                {([
+                  { 
+                    id: 'summarize', 
+                    label: '一键总结当前页面', 
+                    desc: '快速提炼当前网页的核心主旨与大纲', 
+                    disabled: !pageContent?.content || chatLoading,
+                    action: () => { handleSummarize(); setShowCommandMenu(false); } 
+                  },
+                  { id: 'mindmap', label: '生成思维导图 (未来支持)', desc: '基于网页结构生成可视化的思维导图', disabled: true },
+                  { id: 'rewrite', label: 'AI Rewrite 改写 (未来支持)', desc: '改写、润色当前选中的网页文字', disabled: true },
+                  { id: 'translate', label: '网页全文翻译 (未来支持)', desc: '将当前网页翻译为其他目标语言', disabled: true },
+                  { id: 'export', label: '导出为 Markdown (未来支持)', desc: '将对话记录与总结导出到本地', disabled: true }
+                ]).map((cmd) => (
+                  <button
+                    key={cmd.id}
+                    onClick={cmd.action}
+                    disabled={cmd.disabled}
+                    className={cn(
+                      "flex flex-col items-start w-full px-3 py-2 text-left rounded-lg transition-colors",
+                      cmd.disabled 
+                        ? "opacity-40 cursor-not-allowed" 
+                        : "hover:bg-accent active:bg-accent/80 text-foreground"
+                    )}
+                  >
+                    <span className="text-sm font-medium">{cmd.label}</span>
+                    <span className="text-[11px] text-muted-foreground mt-0.5">{cmd.desc}</span>
+                  </button>
+                ))}
+              </div>
+            </ScrollArea>
+            <div className="p-3 border-t bg-muted/20 text-[10px] text-muted-foreground flex justify-between items-center">
+              <span>按 Esc 或点击外部关闭</span>
+              <span className="font-mono bg-muted border px-1.5 py-0.5 rounded text-[9px]">ESC</span>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
