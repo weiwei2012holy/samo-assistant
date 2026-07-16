@@ -4,7 +4,7 @@
  * @Description 设置面板组件，用于配置大模型供应商、API 密钥以及通用设置（如猜你想问等）
  **/
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
@@ -108,6 +108,38 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
   const [newQuestionLabel, setNewQuestionLabel] = useState('');
   const [newQuestionPrompt, setNewQuestionPrompt] = useState('');
   const [showAddForm, setShowAddForm] = useState(false);
+
+  // 默认翻译语言自定义选项状态
+  const PRESET_LANGUAGES = useMemo(() => ['system', 'zh', 'zh-TW', 'en', 'ja', 'ko', 'fr', 'es', 'de'], []);
+  const isCustomLang = !PRESET_LANGUAGES.includes(defaultTranslateLanguage);
+  const [showCustomLangInput, setShowCustomLangInput] = useState(isCustomLang);
+  const [customLangValue, setCustomLangValue] = useState(isCustomLang ? defaultTranslateLanguage : '');
+
+  // 监听外部默认翻译语言的变化同步状态
+  useEffect(() => {
+    const isCustom = !PRESET_LANGUAGES.includes(defaultTranslateLanguage);
+    setShowCustomLangInput(isCustom);
+    if (isCustom) {
+      setCustomLangValue(defaultTranslateLanguage);
+    }
+  }, [defaultTranslateLanguage, PRESET_LANGUAGES]);
+
+  const handleTranslateLangSelect = (val: string) => {
+    if (val === 'custom') {
+      setShowCustomLangInput(true);
+      const initialVal = customLangValue || '文言文';
+      setCustomLangValue(initialVal);
+      onUpdateDefaultTranslateLanguage?.(initialVal);
+    } else {
+      setShowCustomLangInput(false);
+      onUpdateDefaultTranslateLanguage?.(val);
+    }
+  };
+
+  const handleTranslateLangInput = (val: string) => {
+    setCustomLangValue(val);
+    onUpdateDefaultTranslateLanguage?.(val);
+  };
 
   // 获取当前供应商选项
   const currentProviderOption = PROVIDER_DEFINITIONS.find(p => p.value === provider);
@@ -449,9 +481,9 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
             </CardHeader>
             <CardContent>
               <Select
-                value={defaultTranslateLanguage}
+                value={showCustomLangInput ? 'custom' : defaultTranslateLanguage}
                 onChange={(e) => {
-                  onUpdateDefaultTranslateLanguage?.(e.target.value);
+                  handleTranslateLangSelect(e.target.value);
                 }}
                 options={[
                   { value: 'system', label: '系统语言 (自动匹配)' },
@@ -463,8 +495,19 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                   { value: 'fr', label: '法语' },
                   { value: 'es', label: '西班牙语' },
                   { value: 'de', label: '德语' },
+                  { value: 'custom', label: '自定义...' },
                 ]}
               />
+              {showCustomLangInput && (
+                <div className="mt-2.5 animate-in fade-in slide-in-from-top-1 duration-150">
+                  <Input
+                    value={customLangValue}
+                    onChange={(e) => handleTranslateLangInput(e.target.value)}
+                    placeholder="输入目标语言，如 文言文、粤语、四川话"
+                    className="h-8 text-sm"
+                  />
+                </div>
+              )}
             </CardContent>
           </Card>
 
