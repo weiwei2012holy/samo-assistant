@@ -229,7 +229,6 @@ export const InputArea: React.FC<InputAreaProps> = ({
                       : "hover:bg-muted text-foreground"
                   )}
                 >
-                  <span className="text-sm">{cmd.icon}</span>
                   <div className="flex-1 min-w-0 flex items-center justify-between">
                     <span>{cmd.label}</span>
                     <span className={cn("text-[9px] font-mono", isSelected ? "text-primary-foreground/70" : "text-muted-foreground")}>
